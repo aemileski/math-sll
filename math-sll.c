@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.8 2002/02/05 19:00:39 andrewm Exp $
+ * $Id: math-sll.c,v 1.9 2002/02/05 19:32:43 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -59,6 +59,9 @@
  *
  * History
  *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.9
+ *	- Optimized multiplcations and divisions by powers of 2
+ *
+ *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.8
  *	- Consolidated constants
  *	- Added macro for _slladd() _sllsub()
  *	- Removed __inline__ from slladd() sllsub()
@@ -774,12 +777,12 @@ sll _sllcos(sll x)
 	 * t5 = -t4 * x2 /  90 = -t4 * x2 * CONST_1_90
 	 * t6 = -t5 * x2 / 132 = -t5 * x2 * CONST_1_132
 	 */
-	retval = _sllsub(CONST_1, sllmul(sllmul(x2, CONST_1), CONST_1_132));
+	retval = _sllsub(CONST_1, sllmul(x2, CONST_1_132));
 	retval = _sllsub(CONST_1, sllmul(sllmul(x2, retval), CONST_1_90));
 	retval = _sllsub(CONST_1, sllmul(sllmul(x2, retval), CONST_1_56));
 	retval = _sllsub(CONST_1, sllmul(sllmul(x2, retval), CONST_1_30));
 	retval = _sllsub(CONST_1, sllmul(sllmul(x2, retval), CONST_1_12));
-	retval = _sllsub(CONST_1, sllmul(sllmul(x2, retval), CONST_1_2));
+	retval = _sllsub(CONST_1, slldiv2(sllmul(x2, retval)));
 	return retval;
 }
 
@@ -968,13 +971,13 @@ sll _sllexp(sll x)
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_11)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_10)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_9)));
-	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_8)));
+	retval = _slladd(CONST_1, sllmul(retval, slldiv2n(x, 3)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_7)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_6)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_5)));
-	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_4)));
+	retval = _slladd(CONST_1, sllmul(retval, slldiv4(x)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_3)));
-	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_2)));
+	retval = _slladd(CONST_1, sllmul(retval, slldiv2(x)));
 	return retval;
 }
 
@@ -1025,17 +1028,17 @@ sll slllog(sll x)
 	}
 
 	/* First iteration */
-	x1 = sllmul(_sllsub(x, CONST_1), sllmul(_sllsub(x, CONST_3), CONST_1_2));
+	x1 = sllmul(_sllsub(x, CONST_1), slldiv2(_sllsub(x, CONST_3)));
 	ln = _sllsub(ln, x1);
 	x = sllmul(x, _sllexp(x1));
 
 	/* Second iteration */
-	x1 = sllmul(_sllsub(x, CONST_1), sllmul(_sllsub(x, CONST_3), CONST_1_2));
+	x1 = sllmul(_sllsub(x, CONST_1), slldiv2(_sllsub(x, CONST_3)));
 	ln = _sllsub(ln, x1);
 	x = sllmul(x, _sllexp(x1));
 
 	/* Third iteration */
-	x1 = sllmul(_sllsub(x, CONST_1), sllmul(_sllsub(x, CONST_3), CONST_1_2));
+	x1 = sllmul(_sllsub(x, CONST_1), slldiv2(_sllsub(x, CONST_3)));
 	ln = _sllsub(ln, x1);
 
 	return ln;
@@ -1096,17 +1099,17 @@ sll sllsqrt(sll x)
 	n = CONST_1;
 
 	/* Quick solutions for the simple cases */
-	if (x == CONST_0 || x == CONST_1)
+	if (x <= CONST_0 || x == CONST_1)
 		return x;
 
 	/* Scale x so that 0.5 <= x < 2 */
 	while (x >= CONST_2) {
-		x = sllmul(x, CONST_1_4);
-		n = sllmul(n, CONST_2);
+		x = slldiv4(x);
+		n = sllmul2(n);
 	}
 	while (x < CONST_1_2) {
-		x = sllmul(x, CONST_4);
-		n = sllmul(n, CONST_1_2);
+		x = sllmul4(x);
+		n = slldiv2(n);
 	}
 
 	/* Simple solution if x = 4^n */
@@ -1117,10 +1120,10 @@ sll sllsqrt(sll x)
 	xn = CONST_1;
 
 	/* Four iterations will be enough */
-	xn = _sllsub(xn, sllmul(CONST_1_2, _sllsub(xn, slldiv(x, xn))));
-	xn = _sllsub(xn, sllmul(CONST_1_2, _sllsub(xn, slldiv(x, xn))));
-	xn = _sllsub(xn, sllmul(CONST_1_2, _sllsub(xn, slldiv(x, xn))));
-	xn = _sllsub(xn, sllmul(CONST_1_2, _sllsub(xn, slldiv(x, xn))));
+	xn = _sllsub(xn, slldiv2(_sllsub(xn, slldiv(x, xn))));
+	xn = _sllsub(xn, slldiv2(_sllsub(xn, slldiv(x, xn))));
+	xn = _sllsub(xn, slldiv2(_sllsub(xn, slldiv(x, xn))));
+	xn = _sllsub(xn, slldiv2(_sllsub(xn, slldiv(x, xn))));
 
 	/* Scale the result */
 	return sllmul(n, xn);
