@@ -1,10 +1,10 @@
 /*
- * $Id: math-sll.c,v 1.2 2002/01/20 16:58:35 andrewm Exp $
+ * $Id: math-sll.c,v 1.3 2002/01/20 20:14:20 andrewm Exp $
  *
- * Purpose:
+ * Purpose
  *	A fixed point (31.32 bit) math library.
  *
- * Description:
+ * Description
  *	Floating point packs the most accuracy in the available bits, but it
  *	often provides more accuracy than is required.  It is time consuming
  *	to carry the extra precision around, particularly on platforms that
@@ -22,64 +22,101 @@
  *	2^-30 in magnitude.  This yields a decent range and accuracy for many 
  *	applications.  These can of course be adjusted if desired.
  *
- * IMPORTANT:
+ * IMPORTANT
+ *	No checking for arguments out of range (error).
  *	No checking for divide by zero (error).
  *	No checking for overflow (error).
  *	No checking for underflow (warning).
  *	Chops, doesn't round.
  *
- * History:
- *	Jan 20, 2002 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added sllsqrt()
+ * Functions
+ *	sll dbl2sll(double x)			double -> sll
+ *	double slldbl(sll x)			sll -> double
  *
- *	Jan 19, 2002 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Corrected constants, thanks to Mark A. Lisher for noticing.
+ *	sll slladd(sll x, sll y)		x + y
+ *	sll sllsub(sll x, sll y)		x - y
+ *	sll sllmul(sll x, sll y)		x * y
+ *	sll slldiv(sll x, sll y)		x / y
  *
- *	Jan 18, 2002 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added some more explanation to calc_cos() and calc_sin().
- *	Added sllatan() and documented it fairly verbosely.
+ *	sll sllinv(sll v)			1 / x
+ *	sll sllmul2(sll x)			x * 2
+ *	sll sllmul4(sll x)			x * 4
+ *	sll sllmul2n(sll x, int n)		x * 2^n, 0 <= n <= 31
+ *	sll slldiv2(sll x)			x / 2
+ *	sll slldiv4(sll x)			x / 4
+ *	sll slldiv2n(sll x, int n)		x / 2^n, 0 <= n <= 31
  *
- *	July 13, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Corrected documentation for multiplication algorithm.
+ *	sll sllcos(sll x)			cos x
+ *	sll sllsin(sll x)			sin x
+ *	sll slltan(sll x)			tan x
+ *	sll sllatan(sll x)			atan x
  *
- *	May 21, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Rewrote slltanx() to avoid scaling argument for both sine and cosine.
+ *	sll sllexp(sll x)			e^x
+ *	sll slllog(sll x)			ln x
  *
- *	May 19, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Unrolled loops.  Added sllinv(), and sllneg(). Changed constants to
- *	type "LL" (was "UL" - oops).  Changed all routines to use inverse
- *	constants instead of doing division.
+ *	sll sllpow(sll x, sll y)		x^y
+ *	sll sllsqrt(sll x)			x^(1 / 2)
  *
- *	May 15, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Fixed slltan() - used sin/cos instead of sllsin/sllcos.  Doh!
- *	Added slllog(x) and sllpow(x,y).
+ * History
+ *	* Jan 20 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.3
+ *	- Added fast multiplication functions sllmul2(), sllmul4(), sllmul2n()
+ *	- Added fast division functions slldiv2() slldiv(), slldiv4n()
+ *	- Added square root function sllsqrt()
+ *	- Added library roll-call
+ *	- Reformatted the history to RPM format (ick)
+ *	- Moved sllexp() closer to related functions
+ *	- Added algorithm description to sllpow()
  *
- *	May 11, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added simple tan(x) that could stand some optimization.
- *	Added mor constants (see <math.h>).
+ *	* Jan 19 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.1
+ *	- Corrected constants, thanks to Mark A. Lisher for noticing
+ *	- Put source under CVS control
  *
- *	May 3, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added sllsin(), sllcos(), and trig constants.
+ *	* Jan 18 2002 Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added some more explanation to calc_cos() and calc_sin()
+ *	- Added sllatan() and documented it fairly verbosely
  *
- *	May 2, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	All routines and macros now have sll in	their identifiers.  Changed
- *	mul() to umul() and added wrapper sllmul() to handle signed numbers.
- *	I don't like this.  Added and tested sllexp(), sllint(), and sllfrac().
- *	Added some constants,
+ *	* July 13 2000 Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Corrected documentation for multiplication algorithm
  *
- *	Apr 26, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added mul(), and began testing it (unsigned only).
+ *	* May 21 2000 Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Rewrote slltanx() to avoid scaling argument for both sine and cosine
  *
- *	Apr 25, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added sll2dbl() [convert a signed long long to a double].
- *	Began testing.  Well gee whiz it works! :)
+ *	* May 19 2000  Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Unrolled loops
+ *	- Added sllinv(), and sllneg()
+ *	- Changed constants to type "LL" (was "UL" - oops)
+ *	- Changed all routines to use inverse constants instead of division
  *
- *	Apr 24, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Added dbl2sll() [convert a double to signed long long].
- *	Began documenting.
+ *	* May 15, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Fixed slltan() - used sin/cos instead of sllsin/sllcos.  Doh!
+ *	- Added slllog(x) and sllpow(x,y)
  *
- *	Apr ??, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	Conceived, written, and fiddled with.
+ *	* May 11, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added simple tan(x) that could stand some optimization
+ *	- Added more constants (see <math.h>)
+ *
+ *	* May 3, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added sllsin(), sllcos(), and trig constants
+ *
+ *	* May 2, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- All routines and macros now have sll their identifiers
+ *	- Changed mul() to umul() and added sllmul() to handle signed numbers
+ *	- Added and tested sllexp(), sllint(), and sllfrac()
+ *	- Added some constants
+ *
+ *	* Apr 26, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added mul(), and began testing it (unsigned only)
+ *
+ *	* Apr 25, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added sll2dbl() [convert a signed long long to a double]
+ *	- Began testing.  Well gee whiz it works! :)
+ *
+ *	* Apr 24, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Added dbl2sll() [convert a double to signed long long]
+ *	- Began documenting
+ *
+ *	* Apr ??, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	- Conceived, written, and fiddled with
  *
  *
  *		Copyright (C) 2000 Andrew E. Mileski
@@ -146,14 +183,14 @@ typedef signed long long sll;
 #define CONST_SQRT2	0x000000016a09e667LL
 #define CONST_1_SQRT2	0x00000000b504f333LL
 
-inline sll slladd(sll left, sll right)
+__inline__ sll slladd(sll x, sll y)
 {
-	return (left + right);
+	return (x + y);
 }
 
-inline sll sllsub(sll left, sll right)
+__inline__ sll sllsub(sll x, sll y)
 {
-	return (left - right);
+	return (x - y);
 }
 
 /*
@@ -214,7 +251,6 @@ inline sll sllsub(sll left, sll right)
  */
 static ull umul(ull left, ull right)
 {
-	register ull retval;
 #if defined(__arm__)
 	asm(
 		"@ multiply\n"
@@ -297,12 +333,12 @@ static ull umul(ull left, ull right)
 		"	@ r4 = ?\n"
 		"	@ r5 = ?\n"
 		"	@ r6 = ?\n"
-		: "=r" (retval)
+		: "=r" (left)
 		: "0" (left), "r" (right)
 		: "r4", "r5", "r6"
 		: "cc"
 #endif /* defined(__arm__) */
-	return retval;
+	return left;
 }
 
 sll sllmul(sll left, sll right)
@@ -348,9 +384,115 @@ sll sllinv(sll v)
 	return ((sgn) ? sllneg(u): u);
 }
 
-sll slldiv(sll left, sll right)
+__inline__ sll slldiv(sll left, sll right)
 {
 	return sllmul(left, sllinv(right));
+}
+
+sll sllmul2(sll x)
+{
+#if defined(__arm__)
+	asm(
+		"@ sllmul2\n"
+		"	mov	r1, r1, lsl #1\n"
+		"	movs	r0, r0, lsl #1\n"
+		"	orrcs	r1, r1, #1\n"
+		: "=r" (x)
+		: "0" (x)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
+}
+
+sll sllmul4(sll x)
+{
+#if defined(__arm__)
+	asm(
+		"@ sllmul4\n"
+		"	mov	r1, r1, lsl #1\n"
+		"	movs	r0, r0, lsl #1\n"
+		"	orrcs	r1, r1, #1\n"
+		"	mov	r1, r1, lsl #1\n"
+		"	movs	r0, r0, lsl #1\n"
+		"	orrcs	r1, r1, #1\n"
+		: "=r" (x)
+		: "0" (x)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
+}
+
+sll sllmul2n(sll x, int n)
+{
+#if defined(__arm__)
+	asm(
+		"@ sllmul2n\n"
+		"	and	%1, %1, #0x1f\n"
+		"1:\n"
+		"	mov	r1, r1, lsl #1\n"
+		"	movs	r0, r0, lsl #1\n"
+		"	orrcs	r1, r1, #1\n"
+		"	subs	%1, %1, #1\n"
+		"	bne	1b\n"
+		: "=r" (x), "=r" (n)
+		: "0" (x), "1" (n)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
+}
+
+sll slldiv2(sll x)
+{
+#if defined(__arm__)
+	asm(
+		"@ slldiv2\n"
+		"	movs	r1, r1, asr #1\n"
+		"	mov	r0, r0, rrx\n"
+		: "=r" (x)
+		: "0" (x)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
+}
+
+sll slldiv4(sll x)
+{
+#if defined(__arm__)
+	asm(
+		"@ slldiv4\n"
+		"	movs	r1, r1, asr #1\n"
+		"	mov	r0, r0, rrx\n"
+		"	movs	r1, r1, asr #1\n"
+		"	mov	r0, r0, rrx\n"
+		: "=r" (x)
+		: "0" (x)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
+}
+
+sll slldiv2n(sll x, int n)
+{
+#if defined(__arm__)
+	asm(
+		"@ slldiv2n\n"
+		"	and	%1, %1, #0x1f\n"
+		"1:\n"
+		"	movs	r1, r1, asr #1\n"
+		"	mov	r0, r0, rrx\n"
+		"	subs	%1, %1, #1\n"
+		"	bne	1b\n"
+		: "=r" (x), "=r" (n)
+		: "0" (x), "1" (n)
+	);
+#endif /* defined(__arm__) */
+
+	return x;
 }
 
 /*
@@ -464,35 +606,6 @@ static inline sll calc_exp(sll x)
 	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_4)));
 	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_3)));
 	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_2)));
-	return retval;
-}
-
-/*
- * Calculate e^x where x is arbitrary
- */
-sll sllexp(sll x)
-{
-	int i;
-	sll e, retval;
-
-	e = CONST_E;
-
-	/* -0.5 <= x <= 0.5  */
-	i = sll2int(slladd(x, CONST_1_2));
-	retval = calc_exp(sllsub(x, int2sll(i)));
-
-	/* i >= 0 */
-	if (i < 0) {
-		i = -i;
-		e = CONST_1_E;
-	}
-
-	/* Scale the result */
-	for (;i; i >>= 1) {
-		if (i & 1)
-			retval = sllmul(retval, e);
-		e = sllmul(e, e);
-	}
 	return retval;
 }
 
@@ -722,6 +835,35 @@ sll sllatan(sll x)
 }
 
 /*
+ * Calculate e^x where x is arbitrary
+ */
+sll sllexp(sll x)
+{
+	int i;
+	sll e, retval;
+
+	e = CONST_E;
+
+	/* -0.5 <= x <= 0.5  */
+	i = sll2int(slladd(x, CONST_1_2));
+	retval = calc_exp(sllsub(x, int2sll(i)));
+
+	/* i >= 0 */
+	if (i < 0) {
+		i = -i;
+		e = CONST_1_E;
+	}
+
+	/* Scale the result */
+	for (;i; i >>= 1) {
+		if (i & 1)
+			retval = sllmul(retval, e);
+		e = sllmul(e, e);
+	}
+	return retval;
+}
+
+/*
  * Calculate natural logarithm using Netwton-Raphson method
  */
 sll slllog(sll x)
@@ -755,6 +897,11 @@ sll slllog(sll x)
 	return ln;
 }
 
+/*
+ * ln x^y = y * log x
+ * e^(ln x^y) = e^(y * log x)
+ * x^y = e^(y * ln x)
+ */
 sll sllpow(sll x, sll y)
 {
 	if (y == CONST_0)
