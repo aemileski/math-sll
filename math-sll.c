@@ -1,21 +1,22 @@
 /*
- * $Id: math-sll.c,v 1.13 2002/08/16 17:42:46 andrewm Exp $
+ * $Id: math-sll.c,v 1.14 2002/08/17 02:13:52 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
  *
  * Description
  *	Floating point packs the most accuracy in the available bits, but it
- *	often provides more accuracy than is required.  It is time consuming
- *	to carry the extra precision around, particularly on platforms that
- *	don't have a dedicated floating point processor.
+ *	often provides more accuracy than is required.  It is time consuming to
+ *	carry the extra precision around, particularly on platforms that don't
+ *	have a dedicated floating point processor.
  *
- *	This library is a compromise.  All math is done using the 64 bit
- *	signed long long format (sll), and is not intended to be portable.
- *	Just as fast as possible.  This format is also by plan the same size
- *	as an IEEE double.  Since the format used is fixed point, there is
- *	never a need to do time consuming checks and adjustments to maintain
- *	normalized numbers, as is the case in floating point.
+ *	This library is a compromise.  All math is done using the 64 bit signed
+ *	"long long" format (sll), and is not intended to be portable, just as
+ *	fast as possible.  Since "long long" is a elementary type, it can be
+ *	passed around without resorting to the use of pointers.  Since the
+ *	format used is fixed point, there is never a need to do time consuming
+ *	checks and adjustments to maintain normalized numbers, as is the case
+ *	in floating point.
  *
  *	Simply put, this library is limited to handling numbers with a whole
  *	part of up to 2^31 - 1 = 2.147483647e9 in magnitude, and fractional
@@ -58,6 +59,12 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Aug 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.14
+ *	- Fixed sign handling of ARM sllmul()
+ *	- Ported sllmul() to x86 - it can be inlined now
+ *	- Updated the sllmul() comments to reflect my changes
+ *	- Updated the header comments
+ *
  *	* Aug 17 2002 Nicolas Pitre <nico@cam.org> v1.13
  *	- Corrected and expanded upon Andrew's sllmul() comments
  *	- Added in an non-optimal but portable C version of sllmul()
@@ -289,33 +296,45 @@ sll sllsub(sll x, sll y)
 }
 
 /*
- * Let a = a_hi * 2^0 + a_lo * 2^(-32)
- * Let b = b_hi * 2^0 + b_lo * 2^(-32)
- * Where *_hi is the integer part and *_lo the fractional part.
+ * Let a = A * 2^32 + a_hi * 2^0 + a_lo * 2^(-32)
+ * Let b = B * 2^32 + b_hi * 2^0 + b_lo * 2^(-32)
  *
- * a * b = (a_hi * 2^0 + a_lo * 2^-32) * (b_hi * 2^0 + b_lo * 2^-32)
+ * Where:
+ *   *_hi is the integer part
+ *   *_lo the fractional part
+ *   A and B are the sign (0 for positive, -1 for negative).
+ *
+ * a * b = (A * 2^32 + a_hi * 2^0 + a_lo * 2^-32)
+ *       * (B * 2^32 + b_hi * 2^0 + b_lo * 2^-32)
  *
  * Expanding the terms, we get:
  *
- *       = a_lo (32 bits, 2^-32) * b_lo (32 bits, 2^-32) = (64 bits, 2^-64)
- *         (We keep only the high 32 bits of the result, throwing away the
- *          low bits, and store them in the low 32 bits of our final result.)
+ *	 = A * B * 2^64 + A * b_h * 2^32 + A * b_l * 2^0
+ *	 + a_h * B * 2^32 + a_h * b_h * 2^0 + a_h * b_l * 2^-32
+ *	 + a_l * B * 2^0 + a_l * b_h * 2^-32 + a_l * b_l * 2^-64
  *
- *       + a_hi (32 bits, 2^0) * b_hi (32 bits, 2^0) = (64 bits, 2^0)
- *         (We only care about the low 32 bits here, otherwise we're
- *          overflowing and there's nothing we can do anyway.  So let's
- *          use a simple 32x32 = 32bit multiplication in this case.
- *          Store the result in the high 32 bits of our final result.)
+ * Grouping by powers of 2, we get:
  *
- *       + a_hi (32 bits, 2^0) * b_lo (32 bits, 2^-32) = (64 bits, 2^-32)
- *       + b_hi (32 bits, 2^0) * a_lo (32 bits, 2^-32) = (64 bits, 2^-32)
- *         (Those are 64 bit values right in our fixed point range.
- *          Sum them with the partial values we already got earlier
- *          to get the final result.) 
+ *	 = A * B * 2^64
+ *	 Meaningless overflow from sign extension - ignore
+ *
+ *	 + (A * b_h + a_h * B) * 2^32
+ *	 Overflow which we can't handle - ignore
+ *
+ *	 + (A * b_l + a_h * b_h + a_l * B) * 2^0
+ *	 We only need the low 32 bits of this term, as the rest is overflow
+ *
+ *	 + (a_h * b_l + a_l * b_h) * 2^-32
+ *	 We need all 64 bits of this term
+ *
+ *	 +  a_l * b_l * 2^-64
+ *	 We only need the high 32 bits of this term, as the rest is underflow
  *
  * Note that:
- *   a_hi and b_hi are signed
- *   a_lo and b_lo are unsigned
+ *   a > 0 && b > 0: A =  0, B =  0 and the third term is a_h * b_h
+ *   a < 0 && b > 0: A = -1, B =  0 and the third term is a_h * b_h - b_l
+ *   a > 0 && b < 0: A =  0, B = -1 and the third term is a_h * b_h - a_l
+ *   a < 0 && b < 0: A = -1, B = -1 and the third term is a_h * b_h - a_l - b_l
  */
 #if defined(__arm__)
 __inline__ sll sllmul(sll left, sll right)
@@ -327,9 +346,6 @@ __inline__ sll sllmul(sll left, sll right)
 	 *   the least signficant part of the value.  The 'R' operand returns
 	 *   the register number of the register containing the most
 	 *   significant part of the value.
-	 *
-	 * Note: for correct results, we must perform all unsigned
-	 *       multiplications and manually sign extend at the end.
 	 */
 	sll retval;
 
@@ -339,8 +355,10 @@ __inline__ sll sllmul(sll left, sll right)
 		"	mul	%R0, %R1, %R2\n\t"
 		"	umlal	%Q0, %R0, %Q1, %R2\n\t"
 		"	umlal	%Q0, %R0, %R1, %Q2\n\t"
-		"	mov	%R0, %R0, lsl #2\n\t"
-		"	mov	%R0, %R0, asr #2\n\t"
+	        "	tst	%R1, #0x80000000\n\t"
+	        "	subne	%R0, %R0, %Q2\n\t"
+	        "	tst	%R2, #0x80000000\n\t"
+	        "	subne	%R0, %R0, %Q1\n\t"
 		: "=&r" (retval)
 		: "%r" (left), "r" (right)
 		: "cc"
@@ -349,60 +367,42 @@ __inline__ sll sllmul(sll left, sll right)
 	return retval;
 }
 #elif defined(__i386__)
-ull ullmul(ull left, ull right)
+__inline__ sll sllmul(sll left, sll right)
 {
-	register ull retval;
-	/*
-	 * ebp			  (%%ebp)
-	 * return		 4(%%ebp)
-	 * left lo  = B		 8(%%ebp)
-	 * left hi  = A		12(%%ebp)
-	 * right lo = D		16(%%ebp)
-	 * right hi = C		20(%%ebp)
-	 */
+	register sll retval;
 	__asm__(
-		"# A*D\n\t"
-		"	movl	12(%%ebp), %%eax\n\t"
-		"	mull 	16(%%ebp)\n\t"
-		"	movl	%%eax, %%ebx\n\t"
-		"	movl	%%edx, %%ecx\n\t"
-		"# B*C\n\t"
-		"	movl	8(%%ebp), %%eax\n\t"
-		"	mull 	20(%%ebp)\n\t"
-		"	add	%%eax, %%ebx\n\t"
-		"	adc	%%edx, %%ecx\n\t"
-		"# A*C\n\t"
-		"	movl	12(%%ebp), %%eax\n\t"
-		"	mull	20(%%ebp)\n\t"
-		"	addl	%%eax, %%ecx\n\t"
-		"# B*D\n\t"
-		"	movl	8(%%ebp), %%eax\n\t"
-		"	mull 	16(%%ebp)\n\t"
-		"	addl	%%edx, %%ebx\n\t"
-		"	adcl	$0, %%ecx\n\t"
-		"	movl	%%ebx, %%eax\n\t"
-		"	movl	%%ecx, %%edx\n\t"
-		: "=A" (retval)
-		:
-		: "ebx", "ecx"
+		"# sllmul\n\t"
+		"	movl	%1, %%eax\n\t"
+		"	mull 	%3\n\t"
+		"	movl	%%edx, %%ebx\n\t"
+		"\n\t"
+		"	movl	%2, %%eax\n\t"
+		"	mull 	%4\n\t"
+		"	movl	%%eax, %%ecx\n\t"
+		"\n\t"
+		"	movl	%1, %%eax\n\t"
+		"	mull	%4\n\t"
+		"	addl	%%eax, %%ebx\n\t"
+		"	adcl	%%edx, %%ecx\n\t"
+		"\n\t"
+		"	movl	%2, %%eax\n\t"
+		"	mull	%3\n\t"
+		"	addl	%%ebx, %%eax\n\t"
+		"	adcl	%%ecx, %%edx\n\t"
+		"\n\t"
+		"	btl	$31, %2\n\t"
+		"	jnc	1f\n\t"
+		"	subl	%3, %%edx\n\t"
+		"1:	btl	$31, %4\n\t"
+		"	jnc	1f\n\t"
+		"	subl	%1, %%edx\n\t"
+		"1:\n\t"
+		: "=&A" (retval)
+		: "m" (left), "m" (((unsigned *) &left)[1]),
+		  "m" (right), "m" (((unsigned *) &right)[1])
+		: "ebx", "ecx", "cc"
 	);
 	return retval;
-}
-
-sll sllmul(sll left, sll right)
-{
-	unsigned sign = 0;
-	sll retval;
-	if (left < CONST_0) {
-		sign ^= 1;
-		left = sllneg(left);
-	}
-	if (right < CONST_0) {
-		sign ^= 1;
-		right = sllneg(right);
-	}
-	retval = (sll) ullmul((ull) left, (ull) right);
-	return ((sign) ? sllneg(retval): retval);
 }
 #else
 /* Plain C version: not optimized but portable. */
