@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.12 2002/08/16 05:49:44 andrewm Exp $
+ * $Id: math-sll.c,v 1.13 2002/08/16 17:42:46 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,10 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Aug 17 2002 Nicolas Pitre <nico@cam.org> v1.13
+ *	- Corrected and expanded upon Andrew's sllmul() comments
+ *	- Added in an non-optimal but portable C version of sllmul()
+ *
  *	* Aug 16 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.12
  *	- Added in corrected optimized sllmul() for ARM by Nicolas Pitre
  *	- Changed comments on multiplication to describe Nicolas's method
@@ -285,19 +289,29 @@ sll sllsub(sll x, sll y)
 }
 
 /*
- * Let a = a_hi * 2^32 + a_lo * 2^0
- * Let b = b_hi * 2^32 + b_lo * 2^0
+ * Let a = a_hi * 2^0 + a_lo * 2^(-32)
+ * Let b = b_hi * 2^0 + b_lo * 2^(-32)
+ * Where *_hi is the integer part and *_lo the fractional part.
  *
- * a * b = (a_hi * 2^32 + a_lo * 2^0) * (b_hi * 2^32 + b_lo * 2^0)
+ * a * b = (a_hi * 2^0 + a_lo * 2^-32) * (b_hi * 2^0 + b_lo * 2^-32)
  *
- *       = a_hi * b_hi * 2^64
- *	 + a_hi * b_lo * 2^32
- *	 + a_lo * b_hi * 2^32
- *	 + a_lo * b_lo * 2^0
+ * Expanding the terms, we get:
  *
- *	 = a_hi * b_hi * 2^64
- *	 + (a_hi * b_lo + a_lo * b_hi) * 2^32
- *	 + a_lo * b_lo * 2^0
+ *       = a_lo (32 bits, 2^-32) * b_lo (32 bits, 2^-32) = (64 bits, 2^-64)
+ *         (We keep only the high 32 bits of the result, throwing away the
+ *          low bits, and store them in the low 32 bits of our final result.)
+ *
+ *       + a_hi (32 bits, 2^0) * b_hi (32 bits, 2^0) = (64 bits, 2^0)
+ *         (We only care about the low 32 bits here, otherwise we're
+ *          overflowing and there's nothing we can do anyway.  So let's
+ *          use a simple 32x32 = 32bit multiplication in this case.
+ *          Store the result in the high 32 bits of our final result.)
+ *
+ *       + a_hi (32 bits, 2^0) * b_lo (32 bits, 2^-32) = (64 bits, 2^-32)
+ *       + b_hi (32 bits, 2^0) * a_lo (32 bits, 2^-32) = (64 bits, 2^-32)
+ *         (Those are 64 bit values right in our fixed point range.
+ *          Sum them with the partial values we already got earlier
+ *          to get the final result.) 
  *
  * Note that:
  *   a_hi and b_hi are signed
@@ -313,6 +327,9 @@ __inline__ sll sllmul(sll left, sll right)
 	 *   the least signficant part of the value.  The 'R' operand returns
 	 *   the register number of the register containing the most
 	 *   significant part of the value.
+	 *
+	 * Note: for correct results, we must perform all unsigned
+	 *       multiplications and manually sign extend at the end.
 	 */
 	sll retval;
 
@@ -387,7 +404,27 @@ sll sllmul(sll left, sll right)
 	retval = (sll) ullmul((ull) left, (ull) right);
 	return ((sign) ? sllneg(retval): retval);
 }
-#endif /* defined(__i386__) */
+#else
+/* Plain C version: not optimized but portable. */
+sll sllmul(sll a, sll b)
+{
+	unsigned int a_lo, b_lo;
+	signed int a_hi, b_hi;
+	sll x;
+
+	a_lo = a;
+	a_hi = (ull) a >> 32;
+	b_lo = b;
+	b_hi = (ull) b >> 32;
+
+	x = ((ull) (a_hi * b_hi) << 32)
+	  + (((ull) a_lo * b_lo) >> 32)
+	  + (sll) a_lo * b_hi
+	  + (sll) b_lo * a_hi;
+
+	return x;
+}
+#endif
 
 sll sllinv(sll v)
 {
