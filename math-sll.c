@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.6 2002/02/05 17:58:09 andrewm Exp $
+ * $Id: math-sll.c,v 1.7 2002/02/05 18:23:35 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,11 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.7
+ *	- Corrected some i386 assembly comments
+ *	- Renamed calc_*() to _sll*()
+ *	- Moved _sllexp() closer to sllexp()
+ *
  *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.6
  *	- Added sllmul2() sllmul4() sllmul2n() for i386
  *	- Added slldiv2() slldiv4() slldiv2n() for i386
@@ -529,7 +534,7 @@ sll slldiv2(sll x)
 	);
 #elif defined(__i386__)
 	__asm__(
-		"# slldiv2n\n\t"
+		"# slldiv2\n\t"
 		"	sarl	$1, %%edx\n\t"
 		"	rcrl	$1, %%eax\n\t"
 		: "=A" (x)
@@ -553,7 +558,7 @@ sll slldiv4(sll x)
 	);
 #elif defined(__i386__)
 	__asm__(
-		"# slldiv2\n\t"
+		"# slldiv4\n\t"
 		"	shrdl	$2, %%edx, %%eax\n\t"
 		"	sarl	$2, %%edx\n\t"
 		: "=A" (x)
@@ -579,7 +584,7 @@ sll slldiv2n(sll x, int n)
 	);
 #elif defined(__i386__)
 	__asm__(
-		"# slldiv2\n\t"
+		"# slldiv2n\n\t"
 		"	shrd	%%cl, %%edx, %%eax\n\t"
 		"	sarl	%%cl, %%edx\n\t"
 		: "=A" (x), "=c" (n)
@@ -685,40 +690,6 @@ double sll2dbl(sll s)
 }
 
 /*
- * Calculate e^x where -0.5 <= x <= 0.5
- *
- * Description:
- *	e^x = x^0 / 0! + x^1 / 1! + ... + x^N / N!
- *	Note that 0.5^11 / 11! < 2^-32 which is the smallest possible number.
- */
-#define CONST_1_11	0x000000001745d174LL
-#define CONST_1_10	0x0000000019999999LL
-#define CONST_1_9	0x000000001c71c71cLL
-#define CONST_1_8	0x0000000020000000LL
-#define CONST_1_7	0x0000000024924924LL
-#define CONST_1_6	0x000000002aaaaaaaLL
-#define CONST_1_5	0x0000000033333333LL
-#define CONST_1_4	0x0000000040000000LL
-#define CONST_1_3	0x0000000055555555LL
-#define CONST_1_2	0x0000000080000000LL
-static inline sll calc_exp(sll x)
-{
-	sll retval;
-	retval = slladd(CONST_1, sllmul(0, sllmul(x, CONST_1_11)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_11)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_10)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_9)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_8)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_7)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_6)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_5)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_4)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_3)));
-	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_2)));
-	return retval;
-}
-
-/*
  * Calculate cos x where -pi/4 <= x <= pi/4
  *
  * Description:
@@ -731,7 +702,7 @@ static inline sll calc_exp(sll x)
 #define CONST_1_30	0x0000000008888888LL
 #define CONST_1_12	0x0000000015555555LL
 #define CONST_1_2	0x0000000080000000LL
-static inline sll calc_cos(sll x)
+sll _sllcos(sll x)
 {
 	sll retval, x2;
 	x2 = sllmul(x, x);
@@ -776,7 +747,7 @@ static inline sll calc_cos(sll x)
 #define CONST_1_42	0x0000000006186186LL
 #define CONST_1_20	0x000000000cccccccLL
 #define CONST_1_6	0x000000002aaaaaaaLL
-static inline sll calc_sin(sll x)
+sll _sllsin(sll x)
 {
 	sll retval, x2;
 	x2 = sllmul(x, x);
@@ -820,16 +791,16 @@ sll sllcos(sll x)
 	switch (i & 3) {
 		default:
 		case 0:
-			retval = calc_cos(x);
+			retval = _sllcos(x);
 			break;
 		case 1:
-			retval = sllneg(calc_sin(x));
+			retval = sllneg(_sllsin(x));
 			break;
 		case 2:
-			retval = sllneg(calc_cos(x));
+			retval = sllneg(_sllcos(x));
 			break;
 		case 3:
-			retval = calc_sin(x);
+			retval = _sllsin(x);
 			break;
 	}
 	return retval;
@@ -847,16 +818,16 @@ sll sllsin(sll x)
 	switch (i & 3) {
 		default:
 		case 0:
-			retval = calc_sin(x);
+			retval = _sllsin(x);
 			break;
 		case 1:
-			retval = calc_cos(x);
+			retval = _sllcos(x);
 			break;
 		case 2:
-			retval = sllneg(calc_sin(x));
+			retval = sllneg(_sllsin(x));
 			break;
 		case 3:
-			retval = sllneg(calc_cos(x));
+			retval = sllneg(_sllcos(x));
 			break;
 	}
 	return retval;
@@ -872,11 +843,11 @@ sll slltan(sll x)
 		default:
 		case 0:
 		case 2:
-			retval = slldiv(calc_sin(x), calc_cos(x));
+			retval = slldiv(_sllsin(x), _sllcos(x));
 			break;
 		case 1:
 		case 3:
-			retval = sllneg(slldiv(calc_cos(x), calc_sin(x)));
+			retval = sllneg(slldiv(_sllcos(x), _sllsin(x)));
 			break;
 	}
 	return retval;
@@ -909,7 +880,7 @@ sll slltan(sll x)
 
 #define CONST_1_3	0x0000000055555555LL
 
-sll calc_atan(sll x)
+sll _sllatan(sll x)
 {
 	sll a, t, retval;
 
@@ -918,13 +889,13 @@ sll calc_atan(sll x)
 	retval = a;
 
 	/* Second iteration */
-	t = slldiv(calc_sin(a), calc_cos(a));
+	t = slldiv(_sllsin(a), _sllcos(a));
 	x = slldiv(sllsub(x, t), slladd(CONST_1, sllmul(t, x)));
 	a = sllmul(x, sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
 	retval = slladd(retval, a);
 
 	/* Third  iteration */
-	t = slldiv(calc_sin(a), calc_cos(a));
+	t = slldiv(_sllsin(a), _sllcos(a));
 	x = slldiv(sllsub(x, t), slladd(CONST_1, sllmul(t, x)));
 	a = sllmul(x, sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
 	return slladd(retval, a);
@@ -939,8 +910,42 @@ sll sllatan(sll x)
 	else if (x > CONST_1)
 		retval = CONST_PI_2;
 	else
-		return calc_atan(x);
-	return sllsub(retval, calc_atan(sllinv(x)));
+		return _sllatan(x);
+	return sllsub(retval, _sllatan(sllinv(x)));
+}
+
+/*
+ * Calculate e^x where -0.5 <= x <= 0.5
+ *
+ * Description:
+ *	e^x = x^0 / 0! + x^1 / 1! + ... + x^N / N!
+ *	Note that 0.5^11 / 11! < 2^-32 which is the smallest possible number.
+ */
+#define CONST_1_11	0x000000001745d174LL
+#define CONST_1_10	0x0000000019999999LL
+#define CONST_1_9	0x000000001c71c71cLL
+#define CONST_1_8	0x0000000020000000LL
+#define CONST_1_7	0x0000000024924924LL
+#define CONST_1_6	0x000000002aaaaaaaLL
+#define CONST_1_5	0x0000000033333333LL
+#define CONST_1_4	0x0000000040000000LL
+#define CONST_1_3	0x0000000055555555LL
+#define CONST_1_2	0x0000000080000000LL
+sll _sllexp(sll x)
+{
+	sll retval;
+	retval = slladd(CONST_1, sllmul(0, sllmul(x, CONST_1_11)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_11)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_10)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_9)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_8)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_7)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_6)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_5)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_4)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_3)));
+	retval = slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_2)));
+	return retval;
 }
 
 /*
@@ -955,7 +960,7 @@ sll sllexp(sll x)
 
 	/* -0.5 <= x <= 0.5  */
 	i = sll2int(slladd(x, CONST_1_2));
-	retval = calc_exp(sllsub(x, int2sll(i)));
+	retval = _sllexp(sllsub(x, int2sll(i)));
 
 	/* i >= 0 */
 	if (i < 0) {
@@ -992,12 +997,12 @@ sll slllog(sll x)
 	/* First iteration */
 	x1 = sllmul(sllsub(x, CONST_1), sllmul(sllsub(x, CONST_3), CONST_1_2));
 	ln = sllsub(ln, x1);
-	x = sllmul(x, calc_exp(x1));
+	x = sllmul(x, _sllexp(x1));
 
 	/* Second iteration */
 	x1 = sllmul(sllsub(x, CONST_1), sllmul(sllsub(x, CONST_3), CONST_1_2));
 	ln = sllsub(ln, x1);
-	x = sllmul(x, calc_exp(x1));
+	x = sllmul(x, _sllexp(x1));
 
 	/* Third iteration */
 	x1 = sllmul(sllsub(x, CONST_1), sllmul(sllsub(x, CONST_3), CONST_1_2));
