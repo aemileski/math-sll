@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.4 2002/02/05 01:46:44 andrewm Exp $
+ * $Id: math-sll.c,v 1.5 2002/02/05 05:40:42 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,11 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.5
+ *	- Fixed umul() for i386
+ *	- Fixed dbl2sll() and sll2dbl() - I forgot ARM doubles are big-endian
+ *	- Very lightly tested on ARM and i386 and it seems okay
+ *
  *	* Feb  4 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.4
  *	- Added umul() for i386
  *
@@ -352,27 +357,26 @@ static ull umul(ull left, ull right)
 	 * right hi = C		20(%%ebp)
 	 */
 	asm(
-		"# B*C\n\t"
-		"	movl	8(%%ebp), %%eax\n\t"
-		"	mull 	20(%%ebp)\n\t"
-		"	movl	%%eax, %%ebx\n\t"
-		"	movl	%%edx, %%ecx\n\t"
 		"# A*D\n\t"
 		"	movl	12(%%ebp), %%eax\n\t"
 		"	mull 	16(%%ebp)\n\t"
+		"	movl	%%eax, %%ebx\n\t"
+		"	movl	%%edx, %%ecx\n\t"
+		"# B*C\n\t"
+		"	movl	8(%%ebp), %%eax\n\t"
+		"	mull 	20(%%ebp)\n\t"
 		"	add	%%eax, %%ebx\n\t"
 		"	adc	%%edx, %%ecx\n\t"
-		"# B * D\n\t"
-		"	movl   8(%%ebp), %%eax\n\t"
-		"	mull  16(%%ebp)\n\t"
-		"	addl	%%edx, %%ebx\n\t"
-		"	jae	1f\n\t"
-		"	incl	%%ecx\n\t"
-		"	1:\n\t"
 		"# A*C\n\t"
 		"	movl	12(%%ebp), %%eax\n\t"
-		"	mull 	20(%%ebp)\n\t"
-		"	addl	%%ebx, %%eax\n\t"
+		"	mull	20(%%ebp)\n\t"
+		"	addl	%%eax, %%ecx\n\t"
+		"# B*D\n\t"
+		"	movl	8(%%ebp), %%eax\n\t"
+		"	mull 	16(%%ebp)\n\t"
+		"	addl	%%edx, %%ebx\n\t"
+		"	adcl	$0, %%ecx\n\t"
+		"	movl	%%ebx, %%eax\n\t"
 		"	movl	%%ecx, %%edx\n\t"
 		: "=A" (retval)
 		:
@@ -553,23 +557,32 @@ sll dbl2sll(double dbl)
 	/* Move into memory as args might be passed in regs */
 	in.d = dbl;
 
+#if defined(__arm__)
+
+	/* ARM architecture has a big-endian double */
+	exp = in.u[0];
+	in.u[0] = in.u[1];
+	in.u[1] = exp;
+
+#endif /* defined(__arm__) */
+
 	/* Leading 1 is assumed by IEEE */
 	retval.u[1] = 0x40000000;
 
 	/* Unpack the mantissa into the unsigned long */
-	retval.u[1] |= (in.u[0] << 10) & 0x3ffffc00;
-	retval.u[1] |= (in.u[1] >> 22) & 0x000003ff;
-	retval.u[0] = in.u[1] << 10;
+	retval.u[1] |= (in.u[1] << 10) & 0x3ffffc00;
+	retval.u[1] |= (in.u[0] >> 22) & 0x000003ff;
+	retval.u[0] = in.u[0] << 10;
 
 	/* Extract the exponent and align the decimals */
-	exp = (in.u[0] >> 20) & 0x7ff;
+	exp = (in.u[1] >> 20) & 0x7ff;
 	if (exp)
 		retval.ull >>= 1053 - exp;
 	else
 		return 0L;
 
 	/* Negate if negative flag set */
-	if (in.u[0] & 0x80000000)
+	if (in.u[1] & 0x80000000)
 		retval.sll = -retval.sll;
 
 	return retval.sll;
@@ -595,12 +608,9 @@ double sll2dbl(sll s)
 	/* Handle the negative flag */
 	if (in.sll < 1) {
 		flag = 0x80000000;
-		in.sll = sllneg(in.sll);
+		in.ull = sllneg(in.sll);
 	} else
 		flag = 0x00000000;
-
-	/* Pack up the mantissa */
-	retval.ull = in.ull;
 
 	/* Normalize */
 	for (exp = 1053; in.ull && (in.u[1] & 0x80000000) == 0; exp--) {
@@ -609,9 +619,17 @@ double sll2dbl(sll s)
 	in.ull <<= 1;
 	exp++;
 	in.ull >>= 12;
-	retval.u[0] = in.u[1];
-	retval.u[1] = in.u[0];
-	retval.u[0] |= flag | (exp << 20);
+	retval.ull = in.ull;
+	retval.u[1] |= flag | (exp << 20);
+
+#if defined(__arm__)
+
+	/* ARM architecture has a big-endian double */
+	exp = retval.u[0];
+	retval.u[0] = retval.u[1];
+	retval.u[1] = exp;
+
+#endif /* defined(__arm__) */
 
 	return retval.d;
 }
