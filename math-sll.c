@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.5 2002/02/05 05:40:42 andrewm Exp $
+ * $Id: math-sll.c,v 1.6 2002/02/05 17:58:09 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,14 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.6
+ *	- Added sllmul2() sllmul4() sllmul2n() for i386
+ *	- Added slldiv2() slldiv4() slldiv2n() for i386
+ *	- Removed input constraints on sllmul2() sllmul4() sllmul2n() for ARM
+ *	- Removed input constraints on slldiv2() slldiv4() slldiv2n() for ARM
+ *	- Modified ARM assembly for WYSIWYG output
+ *	- Changed asm to __asm__
+ *
  *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.5
  *	- Fixed umul() for i386
  *	- Fixed dbl2sll() and sll2dbl() - I forgot ARM doubles are big-endian
@@ -260,87 +268,87 @@ __inline__ sll sllsub(sll x, sll y)
 static ull umul(ull left, ull right)
 {
 #if defined(__arm__)
-	asm(
-		"@ multiply\n"
-		"	@ r0 = D\n"
-		"	@ r1 = C\n"
-		"	@ r2 = B\n"
-		"	@ r3 = A\n"
-		"	@ r4 = ?\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = ?\n"
-		"	umull	r6, r4, r0, r2\n"
-		"	@ r0 = D\n"
-		"	@ r1 = C\n"
-		"	@ r2 = B\n"
-		"	@ r3 = A\n"
-		"	@ r4 = HI(B*D)\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = ?\n"
-		"	umull	r5, r6, r1, r2\n"
-		"	@ r0 = D\n"
-		"	@ r1 = C\n"
-		"	@ r2 = ?\n"
-		"	@ r3 = A\n"
-		"	@ r4 = HI(B*D)\n"
-		"	@ r5 = LO(B*C)\n"
-		"	@ r6 = HI(B*C)\n"
-		"	adds	r4, r4, r5\n"
-		"	@ r0 = D\n"
-		"	@ r1 = C\n"
-		"	@ r2 = ?\n"
-		"	@ r3 = A\n"
-		"	@ r4 = HI(B*D) + LO(B*C)\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = HI(B*C)\n"
-		"	adc	r5, r6, #0\n"
-		"	@ r0 = D\n"
-		"	@ r1 = C\n"
-		"	@ r2 = ?\n"
-		"	@ r3 = A\n"
-		"	@ r4 = HI(B*D) + LO(B*C)\n"
-		"	@ r5 = HI(B*C) + carry1\n"
-		"	@ r6 = ?\n"
-		"	umull	r2, r6, r0, r3\n"
-		"	@ r0 = ?\n"
-		"	@ r1 = C\n"
-		"	@ r2 = LO(A*D)\n"
-		"	@ r3 = A\n"
-		"	@ r4 = HI(B*D) + LO(B*C)\n"
-		"	@ r5 = HI(B*C) + carry1\n"
-		"	@ r6 = HI(A*D)\n"
-		"	adds	r0, r2, r4\n"
-		"	@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n"
-		"	@ r1 = C\n"
-		"	@ r2 = ?\n"
-		"	@ r3 = A\n"
-		"	@ r4 = ?\n"
-		"	@ r5 = HI(B*C) + carry1\n"
-		"	@ r6 = HI(A*D)\n"
-		"	adc	r2, r5, r6\n"
-		"	@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n"
-		"	@ r1 = C\n"
-		"	@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n"
-		"	@ r3 = A\n"
-		"	@ r4 = ?\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = ?\n"
-		"	umull	r4, r5, r1, r3\n"
-		"	@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n"
-		"	@ r1 = ?\n"
-		"	@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n"
-		"	@ r3 = ?\n"
-		"	@ r4 = LO(A*C)\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = ?\n"
-		"	add	r1, r2, r4\n"
-		"	@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n"
-		"	@ r1 = LO(A*C) + HI(A*D) + HI(B*C) + carry1 + carry2\n"
-		"	@ r2 = ?\n"
-		"	@ r3 = ?\n"
-		"	@ r4 = ?\n"
-		"	@ r5 = ?\n"
-		"	@ r6 = ?\n"
+	__asm__(
+		"@ multiply\n\t"
+		"@ r0 = D\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = B\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = ?\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = ?\n\t"
+		"	umull	r6, r4, r0, r2\n\t"
+		"@ r0 = D\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = B\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = HI(B*D)\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = ?\n\t"
+		"	umull	r5, r6, r1, r2\n\t"
+		"@ r0 = D\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = ?\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = HI(B*D)\n\t"
+		"@ r5 = LO(B*C)\n\t"
+		"@ r6 = HI(B*C)\n\t"
+		"	adds	r4, r4, r5\n\t"
+		"@ r0 = D\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = ?\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = HI(B*D) + LO(B*C)\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = HI(B*C)\n\t"
+		"	adc	r5, r6, #0\n\t"
+		"@ r0 = D\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = ?\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = HI(B*D) + LO(B*C)\n\t"
+		"@ r5 = HI(B*C) + carry1\n\t"
+		"@ r6 = ?\n\t"
+		"	umull	r2, r6, r0, r3\n\t"
+		"@ r0 = ?\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = LO(A*D)\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = HI(B*D) + LO(B*C)\n\t"
+		"@ r5 = HI(B*C) + carry1\n\t"
+		"@ r6 = HI(A*D)\n\t"
+		"	adds	r0, r2, r4\n\t"
+		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = ?\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = ?\n\t"
+		"@ r5 = HI(B*C) + carry1\n\t"
+		"@ r6 = HI(A*D)\n\t"
+		"	adc	r2, r5, r6\n\t"
+		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
+		"@ r1 = C\n\t"
+		"@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
+		"@ r3 = A\n\t"
+		"@ r4 = ?\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = ?\n\t"
+		"	umull	r4, r5, r1, r3\n\t"
+		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
+		"@ r1 = ?\n\t"
+		"@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
+		"@ r3 = ?\n\t"
+		"@ r4 = LO(A*C)\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = ?\n\t"
+		"	add	r1, r2, r4\n\t"
+		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
+		"@ r1 = LO(A*C) + HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
+		"@ r2 = ?\n\t"
+		"@ r3 = ?\n\t"
+		"@ r4 = ?\n\t"
+		"@ r5 = ?\n\t"
+		"@ r6 = ?\n\t"
 		: "=r" (left)
 		: "0" (left), "r" (right)
 		: "r4", "r5", "r6"
@@ -356,7 +364,7 @@ static ull umul(ull left, ull right)
 	 * right lo = D		16(%%ebp)
 	 * right hi = C		20(%%ebp)
 	 */
-	asm(
+	__asm__(
 		"# A*D\n\t"
 		"	movl	12(%%ebp), %%eax\n\t"
 		"	mull 	16(%%ebp)\n\t"
@@ -437,15 +445,22 @@ __inline__ sll slldiv(sll left, sll right)
 sll sllmul2(sll x)
 {
 #if defined(__arm__)
-	asm(
-		"@ sllmul2\n"
-		"	mov	r1, r1, lsl #1\n"
-		"	movs	r0, r0, lsl #1\n"
-		"	orrcs	r1, r1, #1\n"
+	__asm__(
+		"@ sllmul2\n\t"
+		"	mov	r1, r1, lsl #1\n\t"
+		"	movs	r0, r0, lsl #1\n\t"
+		"	orrcs	r1, r1, #1\n\t"
 		: "=r" (x)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# sllmul2\n\t"
+		"	shll	$1, %%eax\n\t"
+		"	rcll	$1, %%edx\n\t"
+		: "=A" (x)
 		: "0" (x)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
@@ -453,18 +468,25 @@ sll sllmul2(sll x)
 sll sllmul4(sll x)
 {
 #if defined(__arm__)
-	asm(
-		"@ sllmul4\n"
-		"	mov	r1, r1, lsl #1\n"
-		"	movs	r0, r0, lsl #1\n"
-		"	orrcs	r1, r1, #1\n"
-		"	mov	r1, r1, lsl #1\n"
-		"	movs	r0, r0, lsl #1\n"
-		"	orrcs	r1, r1, #1\n"
+	__asm__(
+		"@ sllmul4\n\t"
+		"	mov	r1, r1, lsl #1\n\t"
+		"	movs	r0, r0, lsl #1\n\t"
+		"	orrcs	r1, r1, #1\n\t"
+		"	mov	r1, r1, lsl #1\n\t"
+		"	movs	r0, r0, lsl #1\n\t"
+		"	orrcs	r1, r1, #1\n\t"
 		: "=r" (x)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# sllmul4\n\t"
+		"	shldl	$2, %%eax, %%edx\n\t"
+		"	shll	$2, %%eax\n\t"
+		: "=A" (x)
 		: "0" (x)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
@@ -472,19 +494,26 @@ sll sllmul4(sll x)
 sll sllmul2n(sll x, int n)
 {
 #if defined(__arm__)
-	asm(
-		"@ sllmul2n\n"
-		"	and	%1, %1, #0x1f\n"
-		"1:\n"
-		"	mov	r1, r1, lsl #1\n"
-		"	movs	r0, r0, lsl #1\n"
-		"	orrcs	r1, r1, #1\n"
-		"	subs	%1, %1, #1\n"
-		"	bne	1b\n"
+	__asm__(
+		"@ sllmul2n\n\t"
+		"	and	r2, r2, #0x1f\n\t"
+		"1:\n\t"
+		"	mov	r1, r1, lsl #1\n\t"
+		"	movs	r0, r0, lsl #1\n\t"
+		"	orrcs	r1, r1, #1\n\t"
+		"	subs	r2, r2, #1\n\t"
+		"	bne	1b\n\t"
 		: "=r" (x), "=r" (n)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# sllmul2n\n\t"
+		"	shldl	%%cl, %%eax, %%edx\n\t"
+		"	shll	%%cl, %%eax\n\t"
+		: "=A" (x), "=c" (n)
 		: "0" (x), "1" (n)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
@@ -492,14 +521,21 @@ sll sllmul2n(sll x, int n)
 sll slldiv2(sll x)
 {
 #if defined(__arm__)
-	asm(
-		"@ slldiv2\n"
-		"	movs	r1, r1, asr #1\n"
-		"	mov	r0, r0, rrx\n"
+	__asm__(
+		"@ slldiv2\n\t"
+		"	movs	r1, r1, asr #1\n\t"
+		"	mov	r0, r0, rrx\n\t"
 		: "=r" (x)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# slldiv2n\n\t"
+		"	sarl	$1, %%edx\n\t"
+		"	rcrl	$1, %%eax\n\t"
+		: "=A" (x)
 		: "0" (x)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
@@ -507,16 +543,23 @@ sll slldiv2(sll x)
 sll slldiv4(sll x)
 {
 #if defined(__arm__)
-	asm(
-		"@ slldiv4\n"
-		"	movs	r1, r1, asr #1\n"
-		"	mov	r0, r0, rrx\n"
-		"	movs	r1, r1, asr #1\n"
-		"	mov	r0, r0, rrx\n"
+	__asm__(
+		"@ slldiv4\n\t"
+		"	movs	r1, r1, asr #1\n\t"
+		"	mov	r0, r0, rrx\n\t"
+		"	movs	r1, r1, asr #1\n\t"
+		"	mov	r0, r0, rrx\n\t"
 		: "=r" (x)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# slldiv2\n\t"
+		"	shrdl	$2, %%edx, %%eax\n\t"
+		"	sarl	$2, %%edx\n\t"
+		: "=A" (x)
 		: "0" (x)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
@@ -524,18 +567,25 @@ sll slldiv4(sll x)
 sll slldiv2n(sll x, int n)
 {
 #if defined(__arm__)
-	asm(
-		"@ slldiv2n\n"
-		"	and	%1, %1, #0x1f\n"
-		"1:\n"
-		"	movs	r1, r1, asr #1\n"
-		"	mov	r0, r0, rrx\n"
-		"	subs	%1, %1, #1\n"
-		"	bne	1b\n"
+	__asm__(
+		"@ slldiv2n\n\t"
+		"	and	r2, r2, #0x1f\n\t"
+		"1:\n\t"
+		"	movs	r1, r1, asr #1\n\t"
+		"	mov	r0, r0, rrx\n\t"
+		"	subs	r2, r2, #1\n\t"
+		"	bne	1b\n\t"
 		: "=r" (x), "=r" (n)
+	);
+#elif defined(__i386__)
+	__asm__(
+		"# slldiv2\n\t"
+		"	shrd	%%cl, %%edx, %%eax\n\t"
+		"	sarl	%%cl, %%edx\n\t"
+		: "=A" (x), "=c" (n)
 		: "0" (x), "1" (n)
 	);
-#endif /* defined(__arm__) */
+#endif /* defined(__i386__) */
 
 	return x;
 }
