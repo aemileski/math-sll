@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.3 2002/01/20 20:14:20 andrewm Exp $
+ * $Id: math-sll.c,v 1.4 2002/02/05 01:46:44 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,9 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Feb  4 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.4
+ *	- Added umul() for i386
+ *
  *	* Jan 20 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.3
  *	- Added fast multiplication functions sllmul2(), sllmul4(), sllmul2n()
  *	- Added fast division functions slldiv2() slldiv(), slldiv4n()
@@ -137,7 +140,7 @@
 #if !defined(__GNUC__)
 #  error Requires support for type long long (64 bits)
 #endif
-#if !defined(__arm__)
+#if !(defined(__arm__) || defined(__i386__))
 #  error Not yet ported to this architecture!
 #endif
 
@@ -337,8 +340,46 @@ static ull umul(ull left, ull right)
 		: "0" (left), "r" (right)
 		: "r4", "r5", "r6"
 		: "cc"
-#endif /* defined(__arm__) */
 	return left;
+#elif defined(__i386__)
+	register ull retval;
+	/*
+	 * ebp			  (%%ebp)
+	 * return		 4(%%ebp)
+	 * left lo  = B		 8(%%ebp)
+	 * left hi  = A		12(%%ebp)
+	 * right lo = D		16(%%ebp)
+	 * right hi = C		20(%%ebp)
+	 */
+	asm(
+		"# B*C\n\t"
+		"	movl	8(%%ebp), %%eax\n\t"
+		"	mull 	20(%%ebp)\n\t"
+		"	movl	%%eax, %%ebx\n\t"
+		"	movl	%%edx, %%ecx\n\t"
+		"# A*D\n\t"
+		"	movl	12(%%ebp), %%eax\n\t"
+		"	mull 	16(%%ebp)\n\t"
+		"	add	%%eax, %%ebx\n\t"
+		"	adc	%%edx, %%ecx\n\t"
+		"# B * D\n\t"
+		"	movl   8(%%ebp), %%eax\n\t"
+		"	mull  16(%%ebp)\n\t"
+		"	addl	%%edx, %%ebx\n\t"
+		"	jae	1f\n\t"
+		"	incl	%%ecx\n\t"
+		"	1:\n\t"
+		"# A*C\n\t"
+		"	movl	12(%%ebp), %%eax\n\t"
+		"	mull 	20(%%ebp)\n\t"
+		"	addl	%%ebx, %%eax\n\t"
+		"	movl	%%ecx, %%edx\n\t"
+		: "=A" (retval)
+		:
+		: "ebx", "ecx"
+	);
+	return retval;
+#endif /* defined(__i386__) */
 }
 
 sll sllmul(sll left, sll right)
