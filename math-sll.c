@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.14 2002/08/17 02:13:52 andrewm Exp $
+ * $Id: math-sll.c,v 1.15 2002/08/20 18:01:54 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -59,6 +59,12 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Aug 20 2002 Nicolas Pitre <nico@cam.org> v1.15
+ *	- Replaced all shifting assembly with C equivalents
+ *	- Reformated ARM asm and changed comments to begin with @
+ *	- Updated C version of sllmul()
+ *	- Removed the unsupported architecture #error - should be portable now
+ *
  *	* Aug 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.14
  *	- Fixed sign handling of ARM sllmul()
  *	- Ported sllmul() to x86 - it can be inlined now
@@ -192,9 +198,6 @@
  */
 #if !defined(__GNUC__)
 #  error Requires support for type long long (64 bits)
-#endif
-#if !(defined(__arm__) || defined(__i386__))
-#  error Not yet ported to this architecture!
 #endif
 #if !defined(linux)
 #  warn Not tested on this operating system!
@@ -343,22 +346,22 @@ __inline__ sll sllmul(sll left, sll right)
 	 * From gcc/config/arm/arm.h:
 	 *   In a pair of registers containing a DI or DF value the 'Q'
 	 *   operand returns the register number of the register containing
-	 *   the least signficant part of the value.  The 'R' operand returns
+	 *   the least significant part of the value.  The 'R' operand returns
 	 *   the register number of the register containing the most
 	 *   significant part of the value.
 	 */
 	sll retval;
 
-	asm (
-		" # sllmul\n\t"
-		"	umull	%R0, %Q0, %Q1, %Q2\n\t"
-		"	mul	%R0, %R1, %R2\n\t"
-		"	umlal	%Q0, %R0, %Q1, %R2\n\t"
-		"	umlal	%Q0, %R0, %R1, %Q2\n\t"
-	        "	tst	%R1, #0x80000000\n\t"
-	        "	subne	%R0, %R0, %Q2\n\t"
-	        "	tst	%R2, #0x80000000\n\t"
-	        "	subne	%R0, %R0, %Q1\n\t"
+	__asm__ (
+		"@ sllmul\n\t"
+		"umull	%R0, %Q0, %Q1, %Q2\n\t"
+		"mul	%R0, %R1, %R2\n\t"
+		"umlal	%Q0, %R0, %Q1, %R2\n\t"
+		"umlal	%Q0, %R0, %Q2, %R1\n\t"
+	        "tst	%R1, #0x80000000\n\t"
+	        "subne	%R0, %R0, %Q2\n\t"
+	        "tst	%R2, #0x80000000\n\t"
+	        "subne	%R0, %R0, %Q1\n\t"
 		: "=&r" (retval)
 		: "%r" (left), "r" (right)
 		: "cc"
@@ -405,7 +408,7 @@ __inline__ sll sllmul(sll left, sll right)
 	return retval;
 }
 #else
-/* Plain C version: not optimized but portable. */
+/* Plain C version: not optimal but portable. */
 sll sllmul(sll a, sll b)
 {
 	unsigned int a_lo, b_lo;
@@ -458,152 +461,74 @@ __inline__ sll slldiv(sll left, sll right)
 	return sllmul(left, sllinv(right));
 }
 
-sll sllmul2(sll x)
+__inline__ sll sllmul2(sll x)
 {
-#if defined(__arm__)
-	__asm__(
-		"@ sllmul2\n\t"
-		"	mov	r1, r1, lsl #1\n\t"
-		"	movs	r0, r0, lsl #1\n\t"
-		"	orrcs	r1, r1, #1\n\t"
-		: "=r" (x)
-	);
-#elif defined(__i386__)
-	__asm__(
-		"# sllmul2\n\t"
-		"	shll	$1, %%eax\n\t"
-		"	rcll	$1, %%edx\n\t"
-		: "=A" (x)
-		: "0" (x)
-	);
-#endif /* defined(__i386__) */
-
-	return x;
+	return x << 1;
 }
 
-sll sllmul4(sll x)
+__inline__ sll sllmul4(sll x)
 {
-#if defined(__arm__)
-	__asm__(
-		"@ sllmul4\n\t"
-		"	mov	r1, r1, lsl #1\n\t"
-		"	movs	r0, r0, lsl #1\n\t"
-		"	orrcs	r1, r1, #1\n\t"
-		"	mov	r1, r1, lsl #1\n\t"
-		"	movs	r0, r0, lsl #1\n\t"
-		"	orrcs	r1, r1, #1\n\t"
-		: "=r" (x)
-	);
-#elif defined(__i386__)
-	__asm__(
-		"# sllmul4\n\t"
-		"	shldl	$2, %%eax, %%edx\n\t"
-		"	shll	$2, %%eax\n\t"
-		: "=A" (x)
-		: "0" (x)
-	);
-#endif /* defined(__i386__) */
-
-	return x;
+	return x << 2;
 }
 
-sll sllmul2n(sll x, int n)
+__inline__ sll sllmul2n(sll x, int n)
 {
+	sll y;
+
 #if defined(__arm__)
-	__asm__(
+	/* 
+	 * On ARM we need to do explicit assembly since the compiler
+	 * doesn't know the range of n is limited and decides to call
+	 * a library function instead.
+	 */
+	__asm__ (
 		"@ sllmul2n\n\t"
-		"	and	r2, r2, #0x1f\n\t"
-		"1:\n\t"
-		"	mov	r1, r1, lsl #1\n\t"
-		"	movs	r0, r0, lsl #1\n\t"
-		"	orrcs	r1, r1, #1\n\t"
-		"	subs	r2, r2, #1\n\t"
-		"	bne	1b\n\t"
-		: "=r" (x), "=r" (n)
+		"mov	%R0, %R1, lsl %2\n\t"
+		"orr	%R0, %R0, %Q1, lsr %3\n\t"
+		"mov	%Q0, %Q1, lsl %2\n\t"
+		: "=r" (y)
+		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
-#elif defined(__i386__)
-	__asm__(
-		"# sllmul2n\n\t"
-		"	shldl	%%cl, %%eax, %%edx\n\t"
-		"	shll	%%cl, %%eax\n\t"
-		: "=A" (x), "=c" (n)
-		: "0" (x), "1" (n)
-	);
-#endif /* defined(__i386__) */
+#else
+	y = x << n;
+#endif
 
-	return x;
+	return y;
 }
 
-sll slldiv2(sll x)
+__inline__ sll slldiv2(sll x)
 {
-#if defined(__arm__)
-	__asm__(
-		"@ slldiv2\n\t"
-		"	movs	r1, r1, asr #1\n\t"
-		"	mov	r0, r0, rrx\n\t"
-		: "=r" (x)
-	);
-#elif defined(__i386__)
-	__asm__(
-		"# slldiv2\n\t"
-		"	sarl	$1, %%edx\n\t"
-		"	rcrl	$1, %%eax\n\t"
-		: "=A" (x)
-		: "0" (x)
-	);
-#endif /* defined(__i386__) */
-
-	return x;
+	return x >> 1;
 }
 
-sll slldiv4(sll x)
+__inline__ sll slldiv4(sll x)
 {
-#if defined(__arm__)
-	__asm__(
-		"@ slldiv4\n\t"
-		"	movs	r1, r1, asr #1\n\t"
-		"	mov	r0, r0, rrx\n\t"
-		"	movs	r1, r1, asr #1\n\t"
-		"	mov	r0, r0, rrx\n\t"
-		: "=r" (x)
-	);
-#elif defined(__i386__)
-	__asm__(
-		"# slldiv4\n\t"
-		"	shrdl	$2, %%edx, %%eax\n\t"
-		"	sarl	$2, %%edx\n\t"
-		: "=A" (x)
-		: "0" (x)
-	);
-#endif /* defined(__i386__) */
-
-	return x;
+	return x >> 2;
 }
 
-sll slldiv2n(sll x, int n)
+__inline__ sll slldiv2n(sll x, int n)
 {
+	sll y;
+
 #if defined(__arm__)
-	__asm__(
+	/* 
+	 * On ARM we need to do explicit assembly since the compiler
+	 * doesn't know the range of n is limited and decides to call
+	 * a library function instead.
+	 */
+	__asm__ (
 		"@ slldiv2n\n\t"
-		"	and	r2, r2, #0x1f\n\t"
-		"1:\n\t"
-		"	movs	r1, r1, asr #1\n\t"
-		"	mov	r0, r0, rrx\n\t"
-		"	subs	r2, r2, #1\n\t"
-		"	bne	1b\n\t"
-		: "=r" (x), "=r" (n)
+		"mov	%Q0, %Q1, lsr %2\n\t"
+		"orr	%Q0, %Q0, %R1, lsl %3\n\t"
+		"mov	%R0, %R1, asr %2\n\t"
+		: "=r" (y)
+		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
-#elif defined(__i386__)
-	__asm__(
-		"# slldiv2n\n\t"
-		"	shrd	%%cl, %%edx, %%eax\n\t"
-		"	sarl	%%cl, %%edx\n\t"
-		: "=A" (x), "=c" (n)
-		: "0" (x), "1" (n)
-	);
-#endif /* defined(__i386__) */
+#else
+	y = x >> n;
+#endif
 
-	return x;
+	return y;
 }
 
 /*
