@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.11 2002/06/18 00:37:18 andrewm Exp $
+ * $Id: math-sll.c,v 1.12 2002/08/16 05:49:44 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -58,6 +58,10 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Aug 16 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.12
+ *	- Added in corrected optimized sllmul() for ARM by Nicolas Pitre
+ *	- Changed comments on multiplication to describe Nicolas's method
+ *
  *	* Jun 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.11
  *	- Reverted optimized sllmul() for ARM because of bug
  *
@@ -281,151 +285,55 @@ sll sllsub(sll x, sll y)
 }
 
 /*
- *	Multiply two signed 64 bit numbers.  This is done by sign extending
- *	both numbers to 128 bits, multiplying to get a 256 bit product,
- *	throwing away the top 128 bits, and finally throwing away the top
- *	and bottom 32 bits of the remaining result.  To avoid calculating
- *	products that are not needed, we calculate them  beforehand:
+ * Let a = a_hi * 2^32 + a_lo * 2^0
+ * Let b = b_hi * 2^32 + b_lo * 2^0
  *
- *	Where A and B = 0 or 0xffffffff (sign extension of number)
- *	AABC = A_96 + A_64 + B_32 + C_00
- *	DDEF = D_96 + D_64 + E_32 + F_00
+ * a * b = (a_hi * 2^32 + a_lo * 2^0) * (b_hi * 2^32 + b_lo * 2^0)
  *
- *	AABC * DDEF = A_96*D_96 + A_96*D_64 + A_96*E_32 + A_96*F_00
- *		    + A_64*D_96 + A_64*D_64 + A_64*E_32 + A_64*F_00
- *		    + B_32*D_96 + B_32*D_64 + B_32*E_32 + B_32*F_00
- *		    + C_00*D_96 + C_00*D_64 + C_00*E_32 + C_00*F_00
+ *       = a_hi * b_hi * 2^64
+ *	 + a_hi * b_lo * 2^32
+ *	 + a_lo * b_hi * 2^32
+ *	 + a_lo * b_lo * 2^0
  *
- *		    = A*D_192 + A*D_160 + A*E_128 + A*F_96
- *		    + A*D_160 + A*D_128 + A*E_96 + A*F_64
- *		    + B*D_128 + B*D_96 + B*E_64 + B*F_32
- *		    + C*D_96 + C*D_64 + C*E_32 + C*F_00
+ *	 = a_hi * b_hi * 2^64
+ *	 + (a_hi * b_lo + a_lo * b_hi) * 2^32
+ *	 + a_lo * b_lo * 2^0
  *
- *		    = A*D_192
- *		    + A*D_160 + A*D_160
- *		    + A*E_128 + A*D_128 + B*D_128
- *		    + A*F_96 + A*E_96 + B*D_96 + C*D_96
- *		    + A*F_64 + B*E_64 + C*D_64
- *		    + B*F_32 + C*E_32
- *		    + C*F_00
- *
- *		    = (A*D)_192
- *		    + 2(A*D)_160
- *		    + (A*E + A*D + B*D)_128
- *		    + (A*F + A*E + B*D + C*D)_96
- *		    + (A*F + B*E + C*D)_64
- *		    + (B*F + C*E)_32
- *		    + (C*F)_00
- *
- *		if A == 0 && D == 0 (both numbers are positive)
- *		    = 0
- *		    + 0
- *		    + 0
- *		    + 0
- *		    + (B*E)_64
- *		    + (B*F + C*E)_32
- *		    + (C*F)_00
+ * Note that:
+ *   a_hi and b_hi are signed
+ *   a_lo and b_lo are unsigned
  */
+#if defined(__arm__)
+__inline__ sll sllmul(sll left, sll right)
+{
+	/*
+	 * From gcc/config/arm/arm.h:
+	 *   In a pair of registers containing a DI or DF value the 'Q'
+	 *   operand returns the register number of the register containing
+	 *   the least signficant part of the value.  The 'R' operand returns
+	 *   the register number of the register containing the most
+	 *   significant part of the value.
+	 */
+	sll retval;
 
-/*
- *	Given the 64 bit numbers AB and CD, where ABCD are 32 bits each:
- *
- *	AB * CD = (A*(2^32) + B*(2^0)) * (C*(2^32) + D*(2^0))
- *		= A*(2^32) * C*(2^32) + A*(2^32) * D*(2^0)
- *		+ B*(2^0) * C*(2^32) + B*(2^0) * D*(2^0)
- *		= A*C*(2^64) + A*D*(2^32) + B*C*(2^32) + B*D*(2^0)
- *		= A*C*(2^64) + (A*D + B*C)*(2^32) + B*D*(2^0)
- */
+	asm (
+		" # sllmul\n\t"
+		"	umull	%R0, %Q0, %Q1, %Q2\n\t"
+		"	mul	%R0, %R1, %R2\n\t"
+		"	umlal	%Q0, %R0, %Q1, %R2\n\t"
+		"	umlal	%Q0, %R0, %R1, %Q2\n\t"
+		"	mov	%R0, %R0, lsl #2\n\t"
+		"	mov	%R0, %R0, asr #2\n\t"
+		: "=&r" (retval)
+		: "%r" (left), "r" (right)
+		: "cc"
+	);
+
+	return retval;
+}
+#elif defined(__i386__)
 ull ullmul(ull left, ull right)
 {
-#if defined(__arm__)
-	__asm__(
-		"@ multiply\n\t"
-		"@ r0 = D\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = B\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = ?\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = ?\n\t"
-		"	umull	r6, r4, r0, r2\n\t"
-		"@ r0 = D\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = B\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = HI(B*D)\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = ?\n\t"
-		"	umull	r5, r6, r1, r2\n\t"
-		"@ r0 = D\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = ?\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = HI(B*D)\n\t"
-		"@ r5 = LO(B*C)\n\t"
-		"@ r6 = HI(B*C)\n\t"
-		"	adds	r4, r4, r5\n\t"
-		"@ r0 = D\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = ?\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = HI(B*D) + LO(B*C)\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = HI(B*C)\n\t"
-		"	adc	r5, r6, #0\n\t"
-		"@ r0 = D\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = ?\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = HI(B*D) + LO(B*C)\n\t"
-		"@ r5 = HI(B*C) + carry1\n\t"
-		"@ r6 = ?\n\t"
-		"	umull	r2, r6, r0, r3\n\t"
-		"@ r0 = ?\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = LO(A*D)\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = HI(B*D) + LO(B*C)\n\t"
-		"@ r5 = HI(B*C) + carry1\n\t"
-		"@ r6 = HI(A*D)\n\t"
-		"	adds	r0, r2, r4\n\t"
-		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = ?\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = ?\n\t"
-		"@ r5 = HI(B*C) + carry1\n\t"
-		"@ r6 = HI(A*D)\n\t"
-		"	adc	r2, r5, r6\n\t"
-		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
-		"@ r1 = C\n\t"
-		"@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
-		"@ r3 = A\n\t"
-		"@ r4 = ?\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = ?\n\t"
-		"	umull	r4, r5, r1, r3\n\t"
-		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
-		"@ r1 = ?\n\t"
-		"@ r2 = HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
-		"@ r3 = ?\n\t"
-		"@ r4 = LO(A*C)\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = ?\n\t"
-		"	add	r1, r2, r4\n\t"
-		"@ r0 = LO(A*D) + LO(B*C) + HI(B*D)\n\t"
-		"@ r1 = LO(A*C) + HI(A*D) + HI(B*C) + carry1 + carry2\n\t"
-		"@ r2 = ?\n\t"
-		"@ r3 = ?\n\t"
-		"@ r4 = ?\n\t"
-		"@ r5 = ?\n\t"
-		"@ r6 = ?\n\t"
-		: "=r" (left)
-		: "0" (left), "r" (right)
-		: "r4", "r5", "r6"
-		: "cc"
-	return left;
-#elif defined(__i386__)
 	register ull retval;
 	/*
 	 * ebp			  (%%ebp)
@@ -462,7 +370,6 @@ ull ullmul(ull left, ull right)
 		: "ebx", "ecx"
 	);
 	return retval;
-#endif /* defined(__i386__) */
 }
 
 sll sllmul(sll left, sll right)
@@ -480,6 +387,7 @@ sll sllmul(sll left, sll right)
 	retval = (sll) ullmul((ull) left, (ull) right);
 	return ((sign) ? sllneg(retval): retval);
 }
+#endif /* defined(__i386__) */
 
 sll sllinv(sll v)
 {
