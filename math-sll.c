@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.1 2002/01/19 21:05:11 andrewm Exp $
+ * $Id: math-sll.c,v 1.2 2002/01/20 16:58:35 andrewm Exp $
  *
  * Purpose:
  *	A fixed point (31.32 bit) math library.
@@ -29,6 +29,9 @@
  *	Chops, doesn't round.
  *
  * History:
+ *	Jan 20, 2002 - Andrew E. Mileski <andrewm@isoar.ca>
+ *	Added sllsqrt()
+ *
  *	Jan 19, 2002 - Andrew E. Mileski <andrewm@isoar.ca>
  *	Corrected constants, thanks to Mark A. Lisher for noticing.
  *
@@ -754,5 +757,84 @@ sll slllog(sll x)
 
 sll sllpow(sll x, sll y)
 {
+	if (y == CONST_0)
+		return CONST_1;
 	return sllexp(sllmul(y, slllog(x)));
+}
+
+/*
+ * Consider a parabola centered on the y-axis
+ * 	y = a * x^2 + b
+ * Has zeros (y = 0)  at
+ *	a * x^2 + b = 0
+ *	a * x^2 = -b
+ *	x^2 = -b / a
+ *	x = +- (-b / a)^(1 / 2)
+ * Letting a = 1 and b = -X
+ *	y = x^2 - X
+ *	x = +- X^(1 / 2)
+ * Which is convenient since we want to find the square root of X, and we can
+ * use Newton's Method to find the zeros of any f(x)
+ *	xn = x - f(x) / f'(x)
+ * Applied Newton's Method to our parabola
+ *	f(x) = x^2 - X
+ *	xn = x - (x^2 - X) / (2 * x)
+ *	xn = x - (x - X / x) / 2
+ * To make this converge quickly, we scale X so that
+ *	X = 4^N * z
+ * Taking the roots of both sides
+ *	X^(1 / 2) = (4^n * z)^(1 / 2)
+ *	X^(1 / 2) = 2^n * z^(1 / 2)
+ * Let N = 2^n
+ *	x^(1 / 2) = N * z^(1 / 2)
+ * We want this to converge to the positive root, so we must start at a point
+ *	0 < start <= x^(1 / 2)
+ * or
+ *	x^(1/2) <= start <= infinity
+ * since
+ *	(1/2)^(1/2) = 0.707
+ *	2^(1/2) = 1.414
+ * A good choice is 1 which lies in the middle, and takes 4 iterations to
+ * converge from either extreme.
+ */
+
+#define CONST_4		0x0000000400000000LL
+#define CONST_1_4	0x0000000040000000LL
+
+sll sllsqrt(sll x)
+{
+	sll n, xn;
+       
+	/* Start with a scaling factor of 1 */
+	n = CONST_1;
+
+	/* Quick solutions for the simple cases */
+	if (x == CONST_0 || x == CONST_1)
+		return x;
+
+	/* Scale x so that 0.5 <= x < 2 */
+	while (x >= CONST_2) {
+		x = sllmul(x, CONST_1_4);
+		n = sllmul(n, CONST_2);
+	}
+	while (x < CONST_1_2) {
+		x = sllmul(x, CONST_4);
+		n = sllmul(n, CONST_1_2);
+	}
+
+	/* Simple solution if x = 4^n */
+	if (x == CONST_1)
+		return n;
+
+	/* The starting point */
+	xn = CONST_1;
+
+	/* Four iterations will be enough */
+	xn = sllsub(xn, sllmul(CONST_1_2, sllsub(xn, slldiv(x, xn))));
+	xn = sllsub(xn, sllmul(CONST_1_2, sllsub(xn, slldiv(x, xn))));
+	xn = sllsub(xn, sllmul(CONST_1_2, sllsub(xn, slldiv(x, xn))));
+	xn = sllsub(xn, sllmul(CONST_1_2, sllsub(xn, slldiv(x, xn))));
+
+	/* Scale the result */
+	return sllmul(n, xn);
 }
