@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.15 2002/08/20 18:01:54 andrewm Exp $
+ * $Id: math-sll.c,v 1.16 2006/10/31 21:09:42 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -59,6 +59,10 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
+ *	* Oct 31 2006 Kevin Rockel V1.16
+ *	- Fixed typo in sllatan()
+ *	- Clarified sllatan() scaling
+ *
  *	* Aug 20 2002 Nicolas Pitre <nico@cam.org> v1.15
  *	- Replaced all shifting assembly with C equivalents
  *	- Reformated ARM asm and changed comments to begin with @
@@ -826,9 +830,11 @@ sll sllatan(sll x)
 {
 	sll retval;
 
-	if (x < -sllneg(CONST_1))
+	if (x < sllneg(CONST_1))
+		/* if x < -1 then atan x = PI/2 + atan 1/x */
 		retval = sllneg(CONST_PI_2);
 	else if (x > CONST_1)
+		/* if x > 1 then atan x = PI/2 - atan 1/x */
 		retval = CONST_PI_2;
 	else
 		return _sllatan(x);
