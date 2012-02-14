@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.16 2006/10/31 21:09:42 andrewm Exp $
+ * $Id: math-sll.c,v 1.17 2012/02/14 05:13:03 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -12,11 +12,12 @@
  *
  *	This library is a compromise.  All math is done using the 64 bit signed
  *	"long long" format (sll), and is not intended to be portable, just as
- *	fast as possible.  Since "long long" is a elementary type, it can be
- *	passed around without resorting to the use of pointers.  Since the
- *	format used is fixed point, there is never a need to do time consuming
- *	checks and adjustments to maintain normalized numbers, as is the case
- *	in floating point.
+ *	simple and as fast as possible.
+ *
+ *	Since "long long" is a elementary type, it can be passed around without
+ *	resorting to the use of pointers.  Since the format used is fixed point,
+ *	there is never a need to do time consuming checks and adjustments to
+ *	maintain normalized numbers, as is the case in floating point.
  *
  *	Simply put, this library is limited to handling numbers with a whole
  *	part of up to 2^31 - 1 = 2.147483647e9 in magnitude, and fractional
@@ -59,7 +60,12 @@
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
  * History
- *	* Oct 31 2006 Kevin Rockel V1.16
+ *	* Feb 13 2012 Andrew E. Mileski <andrewm@isoar.ca> v1.17
+ *	- Corrected _sllexp() which was missing the first and last iterations.
+ *	- Trivial lvalue change for pedantic compilers.
+ *	- Reformatted.
+ *
+ *	* Oct 31 2006 Kevin Rockel v1.16
  *	- Fixed typo in sllatan()
  *	- Clarified sllatan() scaling
  *
@@ -180,12 +186,13 @@
  *	* Apr 24, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
  *	- Added dbl2sll() [convert a double to signed long long]
  *	- Began documenting
- *
+ *		Anonymous
  *	* Apr ??, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
  *	- Conceived, written, and fiddled with
- *
+ * Licensing: LGPL2
  *
  *		Copyright (C) 2000 Andrew E. Mileski
+ *		Copyright (c) 2000 Andrew E. Mileski
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -446,7 +453,7 @@ sll sllinv(sll v)
 	}
 
 	/* An approximation - must be larger than the actual value */
-	for (u = v; u; ((ull)u) >>= 1)
+	for (u = v; u; u = ((ull) u) >> 1)
 		s >>= 1;
 
 	/* Newton's Method */
@@ -850,8 +857,8 @@ sll sllatan(sll x)
  */
 sll _sllexp(sll x)
 {
-	sll retval;
-	retval = _slladd(CONST_1, sllmul(0, sllmul(x, CONST_1_11)));
+	sll retval = CONST_1;
+
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_11)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_10)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_9)));
@@ -862,6 +869,8 @@ sll _sllexp(sll x)
 	retval = _slladd(CONST_1, sllmul(retval, slldiv4(x)));
 	retval = _slladd(CONST_1, sllmul(retval, sllmul(x, CONST_1_3)));
 	retval = _slladd(CONST_1, sllmul(retval, slldiv2(x)));
+	retval = _slladd(CONST_1, sllmul(retval, x));
+
 	return retval;
 }
 
@@ -891,6 +900,7 @@ sll sllexp(sll x)
 			retval = sllmul(retval, e);
 		e = sllmul(e, e);
 	}
+
 	return retval;
 }
 
