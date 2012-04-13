@@ -1,5 +1,5 @@
 /*
- * $Id: math-sll.c,v 1.17 2012/02/14 05:13:03 andrewm Exp $
+ * $Id: math-sll.c,v 1.18 2012/04/13 22:54:01 andrewm Exp $
  *
  * Purpose
  *	A fixed point (31.32 bit) math library.
@@ -59,139 +59,19 @@
  *	sll sllpow(sll x, sll y)		x^y
  *	sll sllsqrt(sll x)			x^(1 / 2)
  *
- * History
- *	* Feb 13 2012 Andrew E. Mileski <andrewm@isoar.ca> v1.17
- *	- Corrected _sllexp() which was missing the first and last iterations.
- *	- Trivial lvalue change for pedantic compilers.
- *	- Reformatted.
+ * Credits
+ *	Maintained, conceived, written, and fiddled with by:
  *
- *	* Oct 31 2006 Kevin Rockel v1.16
- *	- Fixed typo in sllatan()
- *	- Clarified sllatan() scaling
+ *		 Andrew E. Mileski <andrewm@isoar.ca>
+ *	
+ *	Other Source Code Contributors:
  *
- *	* Aug 20 2002 Nicolas Pitre <nico@cam.org> v1.15
- *	- Replaced all shifting assembly with C equivalents
- *	- Reformated ARM asm and changed comments to begin with @
- *	- Updated C version of sllmul()
- *	- Removed the unsupported architecture #error - should be portable now
- *
- *	* Aug 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.14
- *	- Fixed sign handling of ARM sllmul()
- *	- Ported sllmul() to x86 - it can be inlined now
- *	- Updated the sllmul() comments to reflect my changes
- *	- Updated the header comments
- *
- *	* Aug 17 2002 Nicolas Pitre <nico@cam.org> v1.13
- *	- Corrected and expanded upon Andrew's sllmul() comments
- *	- Added in an non-optimal but portable C version of sllmul()
- *
- *	* Aug 16 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.12
- *	- Added in corrected optimized sllmul() for ARM by Nicolas Pitre
- *	- Changed comments on multiplication to describe Nicolas's method
- *
- *	* Jun 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.11
- *	- Reverted optimized sllmul() for ARM because of bug
- *
- *	* Jun 17 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.10
- *	- Added in optimized sllmul() for ARM by Nicolas Pitre
- *	- Changed comments on multiplication to describe Nicolas's method
- *	- Optimized multiplications and divisions by powers of 2
- *
- *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.9
- *	- Optimized multiplcations and divisions by powers of 2
- *
- *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.8
- *	- Consolidated constants
- *	- Added macro for _slladd() _sllsub()
- *	- Removed __inline__ from slladd() sllsub()
- *	- Renamed umul() to ullmul() and made global
- *	- Added function prototypes
- *	- Corrected header comment about fractional range
- *	- Added warning for non-Linux operating systems
- *
- *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.7
- *	- Corrected some i386 assembly comments
- *	- Renamed calc_*() to _sll*()
- *	- Moved _sllexp() closer to sllexp()
- *
- *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.6
- *	- Added sllmul2() sllmul4() sllmul2n() for i386
- *	- Added slldiv2() slldiv4() slldiv2n() for i386
- *	- Removed input constraints on sllmul2() sllmul4() sllmul2n() for ARM
- *	- Removed input constraints on slldiv2() slldiv4() slldiv2n() for ARM
- *	- Modified ARM assembly for WYSIWYG output
- *	- Changed asm to __asm__
- *
- *	* Feb  5 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.5
- *	- Fixed umul() for i386
- *	- Fixed dbl2sll() and sll2dbl() - I forgot ARM doubles are big-endian
- *	- Very lightly tested on ARM and i386 and it seems okay
- *
- *	* Feb  4 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.4
- *	- Added umul() for i386
- *
- *	* Jan 20 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.3
- *	- Added fast multiplication functions sllmul2(), sllmul4(), sllmul2n()
- *	- Added fast division functions slldiv2() slldiv(), slldiv4n()
- *	- Added square root function sllsqrt()
- *	- Added library roll-call
- *	- Reformatted the history to RPM format (ick)
- *	- Moved sllexp() closer to related functions
- *	- Added algorithm description to sllpow()
- *
- *	* Jan 19 2002 Andrew E. Mileski <andrewm@isoar.ca> v1.1
- *	- Corrected constants, thanks to Mark A. Lisher for noticing
- *	- Put source under CVS control
- *
- *	* Jan 18 2002 Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added some more explanation to calc_cos() and calc_sin()
- *	- Added sllatan() and documented it fairly verbosely
- *
- *	* July 13 2000 Andrew E. Mileski <andrewm@isoar.ca>
- *	- Corrected documentation for multiplication algorithm
- *
- *	* May 21 2000 Andrew E. Mileski <andrewm@isoar.ca>
- *	- Rewrote slltanx() to avoid scaling argument for both sine and cosine
- *
- *	* May 19 2000  Andrew E. Mileski <andrewm@isoar.ca>
- *	- Unrolled loops
- *	- Added sllinv(), and sllneg()
- *	- Changed constants to type "LL" (was "UL" - oops)
- *	- Changed all routines to use inverse constants instead of division
- *
- *	* May 15, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Fixed slltan() - used sin/cos instead of sllsin/sllcos.  Doh!
- *	- Added slllog(x) and sllpow(x,y)
- *
- *	* May 11, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added simple tan(x) that could stand some optimization
- *	- Added more constants (see <math.h>)
- *
- *	* May 3, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added sllsin(), sllcos(), and trig constants
- *
- *	* May 2, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- All routines and macros now have sll their identifiers
- *	- Changed mul() to umul() and added sllmul() to handle signed numbers
- *	- Added and tested sllexp(), sllint(), and sllfrac()
- *	- Added some constants
- *
- *	* Apr 26, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added mul(), and began testing it (unsigned only)
- *
- *	* Apr 25, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added sll2dbl() [convert a signed long long to a double]
- *	- Began testing.  Well gee whiz it works! :)
- *
- *	* Apr 24, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Added dbl2sll() [convert a double to signed long long]
- *	- Began documenting
+ *		Kevin Rockel
+ *		Nicolas Pitre <nico@cam.org>
  *		Anonymous
- *	* Apr ??, 2000 - Andrew E. Mileski <andrewm@isoar.ca>
- *	- Conceived, written, and fiddled with
+ *
  * Licensing: LGPL2
  *
- *		Copyright (C) 2000 Andrew E. Mileski
  *		Copyright (c) 2000 Andrew E. Mileski
  *
  *  This library is free software; you can redistribute it and/or
