@@ -1,0 +1,51 @@
+
+math-sll
+
+	A fixed point (31.32 bit) math library.
+
+	See math-sll.h for details.
+
+License
+
+	Licensed under the terms of the MIT license as of revision v1.19
+
+	See the LICENSE file for details.
+
+	Earlier versions were licensed under the terms of GPL or LGPL.
+
+Installation
+
+	The source can be added as-is into your project, or a library can optionally
+	be built and installed, then statically-linked into your project.
+
+	To build:
+
+		make clean
+		make all
+
+	Optionally:
+
+		make install
+
+	The default installation path prefix is /usr/include
+
+	See the Makefile for details.
+
+Repository
+
+	A math-sll project is being maintained at:
+
+	http://github.com/aemileski/math-sll
+
+	You can also obtain a copy of the latest source code directly via GIT:
+
+	git clone git://github.com/aemileski/math-sll.git
+
+Contact
+
+	Feel free to contact me with questions, bug reports, patches, feature
+	requests, etc., or just to tell me about how you are using math-sll in
+	your project!
+
+	Andrew E. Mileski <andrewm@isoar.ca>
+
