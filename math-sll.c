@@ -69,14 +69,12 @@ sll dbl2sll(double dbl)
 	/* Move into memory as args might be passed in regs */
 	in.d = dbl;
 
-#if defined(__arm__)
-
-	/* ARM architecture has a big-endian double */
+#if defined(__BYTE_ORDER__)&&(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+	/* support for architectures with big-endian double */
 	exp = in.u[0];
 	in.u[0] = in.u[1];
 	in.u[1] = exp;
-
-#endif /* defined(__arm__) */
+#endif /* __ORDER_BIG_ENDIAN__ */
 
 	/* Leading 1 is assumed by IEEE */
 	retval.u[1] = 0x40000000;
@@ -138,14 +136,12 @@ double sll2dbl(sll s)
 	retval.ull = in.ull;
 	retval.u[1] |= flag | (exp << 20);
 
-#if defined(__arm__)
-
-	/* ARM architecture has a big-endian double */
+#if defined(__BYTE_ORDER__)&&(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+	/* support for architectures with big-endian double */
 	exp = retval.u[0];
 	retval.u[0] = retval.u[1];
 	retval.u[1] = exp;
-
-#endif /* defined(__arm__) */
+#endif /* __ORDER_BIG_ENDIAN__ */
 
 	return retval.d;
 }

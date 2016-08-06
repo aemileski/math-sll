@@ -132,10 +132,6 @@
 #  error Requires support for type long long (64 bits)
 #endif
 
-#if !defined(linux)
-#  warn Not tested on this operating system!
-#endif
-
 /*
  * Data types
  */
