@@ -1,9 +1,7 @@
 #if !defined(MATH_SLL_H)
 #  define MATH_SLL_H
 /*
- * Revision v1.19
- *
- * Purpose
+ * Revision v1.20
  *
  *	A fixed point (31.32 bit) math library.
  *
@@ -17,6 +15,14 @@
  *	This library is a compromise.  All math is done using the 64 bit signed
  *	"long long" format (sll), and is not intended to be portable, just as
  *	simple and as fast as possible.
+ *
+ *	As some processors lack division instructions but have multiplication
+ *	instructions, multiplication is favored over division.  This can be a
+ *	penalty when used on a processor with a division instruction, so it is
+ *	recommended to modify the division functions and macros in that case.
+ *
+ *	On procesors without multiplication instructions, other algorithms, for
+ *	example CORDIC, are probably faster.
  *
  *	Since "long long" is a elementary type, it can be passed around without
  *	resorting to the use of pointers.  Since the format used is fixed point,
@@ -66,12 +72,27 @@
  *	sll sllsin(sll x)			sin x
  *	sll slltan(sll x)			tan x
  *
+ *	sll sllsec(sll x)			sec x
+ *	sll sllcsc(sll x)			csc x
+ *	sll sllcot(sll x)			cot x
+ *
+ *	sll sllcosh(sll x)			cosh x
+ *	sll sllsinh(sll x)			sinh x
+ *	sll slltanh(sll x)			tanh x
+ *
+ *	sll sllsech(sll x)			sech x
+ *	sll sllcsch(sll x)			cosh x
+ *	sll sllcoth(sll x)			coth x
+ *
  *	sll sllexp(sll x)			e^x
  *	sll slllog(sll x)			ln x
  *
  *	sll sllinv(sll v)			1 / x
  *	sll sllpow(sll x, sll y)		x^y
  *	sll sllsqrt(sll x)			x^(1 / 2)
+ *
+ *	sll sllfloor(sll x)			floor x
+ *	sll sllceil(sll x)			ceiling x
  *
  * Macros
  *
@@ -90,6 +111,13 @@
  *	_sllneg(X)				See function sllneg()
  *	_sllsub(X,Y)				See function sllsub()
  *
+ *	_sllmul2(X)				See function sllmul2()
+ *	_sllmul4(X)				See function sllmul4()
+ *
+ *	_slldiv(X,Y)				See function slldiv()
+ *	_slldiv2(X,Y)				See function slldiv2()
+ *	_slldiv4(X,Y)				See function slldiv4()
+ *
  * Credits
  *
  *	Maintained, conceived, written, and fiddled with by:
@@ -99,6 +127,7 @@
  *	Other source code contributors:
  *
  *		Kevin Rockel
+ *		Kevin Michael Woley
  *		Mark Anthony Lisher
  *		Nicolas Pitre
  *		Anonymous
@@ -132,16 +161,20 @@
 #  error Requires support for type long long (64 bits)
 #endif
 
-#if !defined(linux)
-#  warn Not tested on this operating system!
+/* DEC SA-110 "StrongARM" (armv4l) architecture has a big-endian double */
+#if defined(__arm__)
+#  if (!defined(__BYTE_ORDER__) || (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+#	define BROKEN_IEEE754_DOUBLE
+#	warn Assuming big-endian double
+#  endif
 #endif
 
 /*
  * Data types
  */
 
-typedef signed long long sll;
-typedef unsigned long long ull;
+__extension__ typedef signed long long sll;
+__extension__ typedef unsigned long long  ull;
 
 /*
  * Function prototypes
@@ -161,15 +194,17 @@ static __inline__ sll sllneg(sll s);
 static __inline__ sll sllsub(sll x, sll y);
 
 #if (defined(__arm__) || defined(__i386__))
-static __inline__ sll sllmul(sll left, sll right);
+#  define HAVE_SLLMUL
+static __inline__ sll sllmul(sll x, sll y);
 #else
-sll sllmul(sll left, sll right);
+#  undef HAVE_SLLMUL
+sll sllmul(sll x, sll y);
 #endif /* (defined(__arm__) || defined(__i386__)) */
 static __inline__ sll sllmul2(sll x);
 static __inline__ sll sllmul4(sll x);
 static __inline__ sll sllmul2n(sll x, int n);
 
-static __inline__ sll slldiv(sll left, sll right);
+static __inline__ sll slldiv(sll x, sll y);
 static __inline__ sll slldiv2(sll x);
 static __inline__ sll slldiv4(sll x);
 static __inline__ sll slldiv2n(sll x, int n);
@@ -179,12 +214,27 @@ sll sllcos(sll x);
 sll sllsin(sll x);
 sll slltan(sll x);
 
+static __inline__ sll sllsec(sll x);
+static __inline__ sll sllcsc(sll x);
+static __inline__ sll sllcot(sll x);
+
+static __inline__ sll sllcosh(sll x);
+static __inline__ sll sllsinh(sll x);
+static __inline__ sll slltanh(sll x);
+
+static __inline__ sll sllsech(sll x);
+static __inline__ sll sllcsch(sll x);
+static __inline__ sll sllcoth(sll x);
+
 sll sllexp(sll x);
 sll slllog(sll x);
 
 sll sllpow(sll x, sll y);
 sll sllinv(sll v);
 sll sllsqrt(sll x);
+
+static __inline__ sll sllfloor(sll x);
+static __inline__ sll sllceil(sll x);
 
 /*
  * Macros
@@ -202,6 +252,13 @@ sll sllsqrt(sll x);
 #define _sllneg(X)	(-(X))
 #define _sllsub(X,Y)	((X) - (Y))
 
+#define _sllmul2(X)	((X) << 1)
+#define _sllmul4(X)	((X) << 2)
+
+#define _slldiv(X,Y)	sllmul((X), sllinv(Y))
+#define _slldiv2(X)	((X) >> 1)
+#define _slldiv4(X)	((X) >> 2)
+
 /*
  * Constants (converted from double)
  */
@@ -212,6 +269,7 @@ sll sllsqrt(sll x);
 #define CONST_3		0x0000000300000000LL	// 3.0
 #define CONST_4		0x0000000400000000LL	// 4.0
 #define CONST_10	0x0000000a00000000LL	// 10.0
+
 #define CONST_1_2	0x0000000080000000LL	// 1.0 / 2.0
 #define CONST_1_3	0x0000000055555555LL	// 1.0 / 3.0
 #define CONST_1_4	0x0000000040000000LL	// 1.0 / 4.0
@@ -232,6 +290,7 @@ sll sllsqrt(sll x);
 #define CONST_1_110	0x000000000253c825LL	// 1.0 / 110.0
 #define CONST_1_132	0x0000000001f07c1fLL	// 1.0 / 132.0
 #define CONST_1_156	0x0000000001a41a41LL	// 1.0 / 156.0
+
 #define CONST_E		0x00000002b7e15162LL	// E
 #define CONST_1_E	0x000000005e2d58d8LL	// 1 / E
 #define CONST_SQRTE	0x00000001a61298e1LL	// sqrt(E)
@@ -240,6 +299,7 @@ sll sllsqrt(sll x);
 #define CONST_LOG10_E	0x000000006f2dec54LL	// log(E)
 #define CONST_LN2	0x00000000b17217f7LL	// ln(2)
 #define CONST_LN10	0x000000024d763776LL	// ln(10)
+
 #define CONST_PI	0x00000003243f6a88LL	// PI
 #define CONST_PI_2	0x00000001921fb544LL	// PI / 2
 #define CONST_PI_4	0x00000000c90fdaa2LL	// PI / 4
@@ -248,6 +308,21 @@ sll sllsqrt(sll x);
 #define CONST_2_SQRTPI	0x0000000120dd7504LL	// 2 / sqrt(PI)
 #define CONST_SQRT2	0x000000016a09e667LL	// sqrt(2)
 #define CONST_1_SQRT2	0x00000000b504f333LL	// 1 / sqrt(2)
+
+#define CONST_FACT_0    0x0000000100000000LL,   // 0!
+#define CONST_FACT_1    0x0000000100000000LL,   // 1!
+#define CONST_FACT_2    0x0000000200000000LL,   // 2!
+#define CONST_FACT_3    0x0000000600000000LL,   // 3!
+#define CONST_FACT_4    0x0000001800000000LL,   // 4!
+#define CONST_FACT_5    0x0000007800000000LL,   // 5!
+#define CONST_FACT_6    0x000002d000000000LL,   // 6!
+#define CONST_FACT_7    0x000013b000000000LL,   // 7!
+#define CONST_FACT_8    0x00009d8000000000LL,   // 8!
+#define CONST_FACT_9    0x0005898000000000LL,   // 9!
+#define CONST_FACT_10   0x00375f0000000000LL,   // 10!
+#define CONST_FACT_11   0x003ce88000000000LL,   // 11!
+#define CONST_FACT_12   0x02dae60000000000LL,   // 12!
+#define CONST_FACT_13   0x251dae0000000000LL,   // 13!
 
 /*
  * Convert integer to sll
@@ -291,7 +366,7 @@ static __inline__ sll sllfrac(sll s)
 
 static __inline__ sll slladd(sll x, sll y)
 {
-	return (x + y);
+	return _slladd(x, y);
 }
 
 /*
@@ -309,7 +384,7 @@ static __inline__ sll sllneg(sll s)
 
 static __inline__ sll sllsub(sll x, sll y)
 {
-	return (x - y);
+	return _sllsub(x, y);
 }
 
 /*
@@ -361,7 +436,7 @@ static __inline__ sll sllsub(sll x, sll y)
 
 #if defined(__arm__)
 
-static __inline__ sll sllmul(sll left, sll right)
+static __inline__ sll sllmul(sll x, sll y)
 {
 	/*
 	 * From gcc/config/arm/arm.h:
@@ -384,7 +459,7 @@ static __inline__ sll sllmul(sll left, sll right)
 		"tst	%R2, #0x80000000\n\t"
 		"subne	%R0, %R0, %Q1\n\t"
 		: "=&r" (retval)
-		: "%r" (left), "r" (right)
+		: "%r" (x), "r" (y)
 		: "cc"
 	);
 
@@ -393,7 +468,7 @@ static __inline__ sll sllmul(sll left, sll right)
 
 #elif defined(__i386__)
 
-static __inline__ sll sllmul(sll left, sll right)
+static __inline__ sll sllmul(sll x, sll y)
 {
 	register sll retval;
 
@@ -425,8 +500,8 @@ static __inline__ sll sllmul(sll left, sll right)
 		"	subl	%1, %%edx\n\t"
 		"1:\n\t"
 		: "=&A" (retval)
-		: "m" (left), "m" (((unsigned *) &left)[1]),
-		  "m" (right), "m" (((unsigned *) &right)[1])
+		: "m" (x), "m" (((unsigned *) &x)[1]),
+		  "m" (y), "m" (((unsigned *) &y)[1])
 		: "ebx", "ecx", "cc"
 	);
 
@@ -449,7 +524,7 @@ sll sllmul(sll a, sll b);
 
 static __inline__ sll sllmul2(sll x)
 {
-	return (x << 1);
+	return _sllmul2(x);
 }
 
 /*
@@ -458,7 +533,7 @@ static __inline__ sll sllmul2(sll x)
 
 static __inline__ sll sllmul4(sll x)
 {
-	return (x << 2);
+	return _sllmul4(x);
 }
 
 /*
@@ -470,6 +545,7 @@ static __inline__ sll sllmul2n(sll x, int n)
 	sll y;
 
 #if defined(__arm__)
+
 	/*
 	 * On ARM we need to do explicit assembly since the compiler
 	 * doesn't know the range of n is limited and decides to call
@@ -483,8 +559,11 @@ static __inline__ sll sllmul2n(sll x, int n)
 		: "=r" (y)
 		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
+
 #else
+
 	y = x << n;
+
 #endif
 
 	return y;
@@ -494,9 +573,9 @@ static __inline__ sll sllmul2n(sll x, int n)
  * Division
  */
 
-static __inline__ sll slldiv(sll left, sll right)
+static __inline__ sll slldiv(sll x, sll y)
 {
-	return sllmul(left, sllinv(right));
+	return _slldiv(x, y);
 }
 
 /*
@@ -505,7 +584,7 @@ static __inline__ sll slldiv(sll left, sll right)
 
 static __inline__ sll slldiv2(sll x)
 {
-	return (x >> 1);
+	return _slldiv2(x);
 }
 
 /*
@@ -514,7 +593,7 @@ static __inline__ sll slldiv2(sll x)
 
 static __inline__ sll slldiv4(sll x)
 {
-	return (x >> 2);
+	return _slldiv4(x);
 }
 
 /*
@@ -540,9 +619,212 @@ static __inline__ sll slldiv2n(sll x, int n)
 		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
 #else
+
 	y = x >> n;
+
 #endif
 
 	return y;
+}
+
+/*
+ * Trigonometric secant
+ *
+ * Description
+ *
+ *	sec x = 1 / cos x
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllsec(sll x)
+{
+	return sllinv(sllcos(x));
+}
+
+/*
+ * Trigonometric cosecant
+ *
+ * Description
+ *
+ *	csc x = 1 / sin x
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllcsc(sll x)
+{
+	return sllinv(sllsin(x));
+}
+
+/*
+ * Trigonometric cotangent
+ *
+ * Description
+ *
+ *	cot x = 1 / tan x
+ *
+ *	cot x = cos x / sin x
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllcot(sll x)
+{
+	return _slldiv(sllcos(x), sllsin(x));
+}
+
+/*
+ * Hyperbolic cosine
+ *
+ * Description
+ *
+ *	cosh x = (e^x + e^(-x)) / 2
+ *
+ *	cosh x = 1 + x^2 / 2! + ... + x^(2 * N) / (2 * N)!
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllcosh(sll x)
+{
+	return _slldiv2(_slladd(sllexp(x), sllexp(_sllneg(x))));
+}
+
+/*
+ * Hyperbolic sine
+ *
+ * Description
+ *
+ *	sinh x = (e^x - e^(-x)) / 2
+ *
+ *	sinh x = 1 + x^3 / 3! + ... + x^(2 * N + 1) / (2 * N + 1)!
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllsinh(sll x)
+{
+	return _slldiv2(_sllsub(sllexp(x), sllexp(_sllneg(x))));
+}
+
+/*
+ * Hyperbolic tangent
+ *
+ * Description
+ *
+ *	tanh x = sinh x / cosh x
+ *
+ *	tanh x = (e^x - e^(-x)) / (e^x + e^(-x))
+ *
+ *	tanh x = (e^(2 * x) - 1) / (e^(2 * x) + 1)
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll slltanh(sll x)
+{
+	register sll e2x;
+
+	e2x = sllexp(_sllmul2(x));
+
+	return _slldiv(_sllsub(e2x, CONST_1), _slladd(e2x, CONST_1));
+}
+
+/*
+ * Hyperbolic secant
+ *
+ * Description
+ *
+ *	sech x = 1 / cosh x
+ *
+ *	sech x = 2 / (e^x + e^(-x))
+ *
+ *	sech x = 2 * e^x / (e^(2 * x) + 1)
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllsech(sll x)
+{
+	return _slldiv(_sllmul2(sllexp(x)), _slladd(sllexp(_sllmul2(x)), CONST_1));
+}
+
+/*
+ * Hyperbolic cosecant
+ *
+ * Description
+ *
+ *	csch x = = 1 / sinh x
+ *
+ *	csch x = 2 / (e^x - e^(-x))
+ *
+ *	csch x = 2 * e^x / (e^(2 * x) - 1)
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllcsch(sll x)
+{
+	return _slldiv(_sllmul2(sllexp(x)), _sllsub(sllexp(_sllmul2(x)), CONST_1));
+}
+
+/*
+ * Hyperbolic cotangent
+ *
+ * Description
+ *
+ *	coth x =  1 / tanh x
+ *
+ *	coth x = cosh x / sinh x
+ *
+ *	coth x = (e^x + e^(-x)) / (e^x - e^(-x))
+ *
+ *	coth x = (e^(2 * x) + 1) / (e^(2 * x) - 1)
+ *
+ * An alternate algorithm, like a power series, would be more accurate.
+ */
+
+static __inline__ sll sllcoth(sll x)
+{
+	register sll e2x;
+
+	e2x = sllexp(sllmul2(x));
+
+	return _slldiv(_slladd(e2x, CONST_1), _sllsub(e2x, CONST_1));
+}
+
+/*
+ * Floor
+ *
+ * Description
+ *
+ *	floor x = largest integer not larger than x
+ */
+
+static __inline__ sll sllfloor(sll x)
+{
+	register sll retval;
+
+	retval = _sllint(x);
+
+	return ((retval > x) ? _sllsub(retval, CONST_1): retval);
+}
+
+/*
+ * Ceiling
+ *
+ * Description
+ *
+ *	ceil x = smallest integer not smaller than x
+ */
+
+static __inline__ sll sllceil(sll x)
+{
+	register sll retval;
+
+	retval = _sllint(x);
+
+	return ((retval < x) ? _slladd(retval, CONST_1): retval);
 }
 #endif /* !defined(MATH_SLL_H) */

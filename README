@@ -11,7 +11,7 @@ License
 
 	See the LICENSE file for details.
 
-	Earlier versions were licensed under the terms of GPL or LGPL.
+	Earlier revisions were licensed under the terms of GPL or LGPL.
 
 Installation
 
@@ -27,7 +27,7 @@ Installation
 
 		make install
 
-	The default installation path prefix is /usr/include
+	The default installation path prefix is /usr/local
 
 	See the Makefile for details.
 

@@ -1,5 +1,5 @@
 /*
- * Revision v1.19
+ * Revision v1.20
  *
  * Credits
  *
@@ -10,6 +10,7 @@
  *	Other source code contributors:
  *
  *		Kevin Rockel
+ *		Kevin Michael Woley
  *		Mark Anthony Lisher
  *		Nicolas Pitre
  *		Anonymous
@@ -53,7 +54,24 @@ static sll _sllsin(sll x);
 static sll _sllexp(sll x);
 
 /*
- * Unpack IEEE floating point double format into fixed point sll format
+ * Unpack IEEE 754 floating point double format into fixed point sll format
+ *
+ * Description
+ *
+ *	IEEE 754 specifies the binary64 type ("double" in C) as having:
+ *
+ *	1 bit sign
+ *	11 bit exponent
+ *	53 bit significand
+ *
+ *	The first bit of the significand is an implied 1 which is not stored.
+ *	The decimal would be to the right of that implied 1, or to the left of
+ *	the stored significand.
+ *
+ *	The exponent is unsigned, and biased with an offset of 1023.
+ *
+ *	The IEEE 754 standard does not specify endianess, but the endian used is
+ *	traditionally the same endian that the processor uses.
  */
 
 sll dbl2sll(double dbl)
@@ -69,14 +87,13 @@ sll dbl2sll(double dbl)
 	/* Move into memory as args might be passed in regs */
 	in.d = dbl;
 
-#if defined(__arm__)
+#if defined(BROKEN_IEEE754_DOUBLE)
 
-	/* ARM architecture has a big-endian double */
 	exp = in.u[0];
 	in.u[0] = in.u[1];
 	in.u[1] = exp;
 
-#endif /* defined(__arm__) */
+#endif /* defined(BROKEN_IEEE754_DOUBLE) */
 
 	/* Leading 1 is assumed by IEEE */
 	retval.u[1] = 0x40000000;
@@ -89,19 +106,37 @@ sll dbl2sll(double dbl)
 	/* Extract the exponent and align the decimals */
 	exp = (in.u[1] >> 20) & 0x7ff;
 	if (exp)
-		retval.ull >>= 1053 - exp;
+		/* IEEE 754 decimal begins at right of bit position 30 */
+		retval.ull >>= (1023 + 30) - exp;
 	else
 		return 0L;
 
 	/* Negate if negative flag set */
 	if (in.u[1] & 0x80000000)
-		retval.sll = -retval.sll;
+		retval.sll = _sllneg(retval.sll);
 
 	return retval.sll;
 }
 
 /*
- * Pack fixed point sll format into IEEE floating point double format
+ * Pack fixed point sll format into IEEE 754 floating point double format
+ *
+ * Description
+ *
+ *	IEEE 754 specifies the binary64 type ("double" in C) as having:
+ *
+ *	1 bit sign
+ *	11 bit exponent
+ *	53 bit significand
+ *
+ *	The first bit of the significand is an implied 1 which is not stored.
+ *	The decimal would be to the right of that implied 1, or to the left of
+ *	the stored significand.
+ *
+ *	The exponent is unsigned, and biased with an offset of 1023.
+ *
+ *	The IEEE 754 standard does not specify endianess, but the endian used is
+ *	traditionally the same endian that the processor uses.
  */
 
 double sll2dbl(sll s)
@@ -128,8 +163,12 @@ double sll2dbl(sll s)
 	} else
 		flag = 0x00000000;
 
-	/* Normalize */
-	for (exp = 1053; in.ull && (in.u[1] & 0x80000000) == 0; exp--) {
+	/*
+	 * Normalize
+	 *
+	 * IEEE 754 decimal-point begins at right of bit position 30
+	 */
+	for (exp = (1023 + 30); in.ull && (in.u[1] & 0x80000000) == 0; exp--) {
 		in.ull <<= 1;
 	}
 	in.ull <<= 1;
@@ -138,14 +177,13 @@ double sll2dbl(sll s)
 	retval.ull = in.ull;
 	retval.u[1] |= flag | (exp << 20);
 
-#if defined(__arm__)
+#if defined(BROKEN_IEEE754_DOUBLE)
 
-	/* ARM architecture has a big-endian double */
 	exp = retval.u[0];
 	retval.u[0] = retval.u[1];
 	retval.u[1] = exp;
 
-#endif /* defined(__arm__) */
+#endif /* defined(BROKEN_IEEE754_DOUBLE)  */
 
 	return retval.d;
 }
@@ -165,7 +203,7 @@ double sll2dbl(sll s)
  *	A and B are the sign (0 for positive, -1 for negative).
  *
  *	a * b = (A * 2^32 + a_hi * 2^0 + a_lo * 2^-32)
- *		* (B * 2^32 + b_hi * 2^0 + b_lo * 2^-32)
+ *	      * (B * 2^32 + b_hi * 2^0 + b_lo * 2^-32)
  *
  *	Expanding the terms, we get:
  *
@@ -196,7 +234,7 @@ double sll2dbl(sll s)
  *	a > 0 && b < 0: A =  0, B = -1 and the third term is a_h * b_h - a_l
  *	a < 0 && b < 0: A = -1, B = -1 and the third term is a_h * b_h - a_l - b_l
  */
-#if (!defined(__arm__) && !defined(__i386__))
+#if !defined(HAVE_SLLMUL)
 /*
  * Plain C version: not optimal but portable
  */
@@ -221,7 +259,7 @@ sll sllmul(sll a, sll b)
 
 	return x;
 }
-#endif /* (!defined(__arm__) && !defined(__i386__)) */
+#endif /* !defined(HAVE_SLLMUL)! */
 
 /*
  * Calculate cos x where -pi/4 <= x <= pi/4
@@ -233,21 +271,23 @@ sll sllmul(sll a, sll b)
  *
  *	cos x = t0 + t1 + t2 + t3 + t4 + t5 + t6
  *
+ *	Consider only the factorials:
  *	f0 =  0! =  1
  *	f1 =  2! =  2 *  1 * f0 =   2 * f0
- *	f2 =  4! =  4 *  3 * f1 =  12 x f1
+ *	f2 =  4! =  4 *  3 * f1 =  12 * f1
  *	f3 =  6! =  6 *  5 * f2 =  30 * f2
  *	f4 =  8! =  8 *  7 * f3 =  56 * f3
  *	f5 = 10! = 10 *  9 * f4 =  90 * f4
  *	f6 = 12! = 12 * 11 * f5 = 132 * f5
  *
+ *	Now consider each term of the series:
  *	t0 = 1
- *	t1 = -t0 * x2 /   2 = -t0 * x2 * CONST_1_2
- *	t2 = -t1 * x2 /  12 = -t1 * x2 * CONST_1_12
- *	t3 = -t2 * x2 /  30 = -t2 * x2 * CONST_1_30
- *	t4 = -t3 * x2 /  56 = -t3 * x2 * CONST_1_56
- *	t5 = -t4 * x2 /  90 = -t4 * x2 * CONST_1_90
- *	t6 = -t5 * x2 / 132 = -t5 * x2 * CONST_1_132
+ *	t1 = -t0 * x^2 / f1 = -t0 * x^2 * CONST_1_2
+ *	t2 = -t1 * x^2 / f2 = -t1 * x^2 * CONST_1_12
+ *	t3 = -t2 * x^2 / f3 = -t2 * x^2 * CONST_1_30
+ *	t4 = -t3 * x^2 / f4 = -t3 * x^2 * CONST_1_56
+ *	t5 = -t4 * x^2 / f5 = -t4 * x^2 * CONST_1_90
+ *	t6 = -t5 * x^2 / f6 = -t5 * x^2 * CONST_1_132
  */
 
 sll _sllcos(sll x)
@@ -277,21 +317,23 @@ sll _sllcos(sll x)
  *
  *	sin x = t0 + t1 + t2 + t3 + t4 + t5 + t6
  *
+ *	Consider only the factorials:
  *	f0 =  0! =  1
  *	f1 =  3! =  3 *  2 * f0 =   6 * f0
- *	f2 =  5! =  5 *  4 * f1 =  20 x f1
+ *	f2 =  5! =  5 *  4 * f1 =  20 * f1
  *	f3 =  7! =  7 *  6 * f2 =  42 * f2
  *	f4 =  9! =  9 *  8 * f3 =  72 * f3
  *	f5 = 11! = 11 * 10 * f4 = 110 * f4
  *	f6 = 13! = 13 * 12 * f5 = 156 * f5
  *
+ *	Now consider each term of the series:
  *	t0 = 1
- *	t1 = -t0 * x2 /   6 = -t0 * x2 * CONST_1_6
- *	t2 = -t1 * x2 /  20 = -t1 * x2 * CONST_1_20
- *	t3 = -t2 * x2 /  42 = -t2 * x2 * CONST_1_42
- *	t4 = -t3 * x2 /  72 = -t3 * x2 * CONST_1_72
- *	t5 = -t4 * x2 / 110 = -t4 * x2 * CONST_1_110
- *	t6 = -t5 * x2 / 156 = -t5 * x2 * CONST_1_156
+ *	t1 = -t0 * x^2 /   6 = -t0 * x^2 * CONST_1_6
+ *	t2 = -t1 * x^2 /  20 = -t1 * x^2 * CONST_1_20
+ *	t3 = -t2 * x^2 /  42 = -t2 * x^2 * CONST_1_42
+ *	t4 = -t3 * x^2 /  72 = -t3 * x^2 * CONST_1_72
+ *	t5 = -t4 * x^2 / 110 = -t4 * x^2 * CONST_1_110
+ *	t6 = -t5 * x^2 / 156 = -t5 * x^2 * CONST_1_156
  */
 
 sll _sllsin(sll x)
@@ -733,3 +775,4 @@ sll sllsqrt(sll x)
 	/* Scale the result */
 	return sllmul(n, xn);
 }
+
