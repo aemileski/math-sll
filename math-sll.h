@@ -1,7 +1,7 @@
 #if !defined(MATH_SLL_H)
 #  define MATH_SLL_H
 /*
- * Revision v1.20
+ * Revision v1.21
  *
  *	A fixed point (31.32 bit) math library.
  *
@@ -59,13 +59,13 @@
  *
  *	sll sllmul(sll x, sll y)		x * y
  *	sll sllmul2(sll x)			x * 2
- *	sll sllmul4(sll x)			x * 4
  *	sll sllmul2n(sll x, int n)		x * 2^n, 0 <= n <= 31
+ *	sll sllmul4(sll x)			x * 4
  *
  *	sll slldiv(sll x, sll y)		x / y
  *	sll slldiv2(sll x)			x / 2
- *	sll slldiv4(sll x)			x / 4
  *	sll slldiv2n(sll x, int n)		x / 2^n, 0 <= n <= 31
+ *	sll slldiv4(sll x)			x / 4
  *
  *	sll sllatan(sll x)			atan x
  *	sll sllcos(sll x)			cos x
@@ -112,10 +112,12 @@
  *	_sllsub(X,Y)				See function sllsub()
  *
  *	_sllmul2(X)				See function sllmul2()
+ *	_sllmul2n(X)				See function sllmul2n()
  *	_sllmul4(X)				See function sllmul4()
  *
  *	_slldiv(X,Y)				See function slldiv()
  *	_slldiv2(X,Y)				See function slldiv2()
+ *	_slldiv2n(X,Y)				See function slldiv2n()
  *	_slldiv4(X,Y)				See function slldiv4()
  *
  * Credits
@@ -254,10 +256,12 @@ static __inline__ sll sllceil(sll x);
 
 #define _sllmul2(X)	((X) << 1)
 #define _sllmul4(X)	((X) << 2)
+#define _sllmul2n(X,N)	((X) << (N))
 
 #define _slldiv(X,Y)	sllmul((X), sllinv(Y))
 #define _slldiv2(X)	((X) >> 1)
 #define _slldiv4(X)	((X) >> 2)
+#define _slldiv2n(X,N)	((X) >> (N))
 
 /*
  * Constants (converted from double)
@@ -309,20 +313,19 @@ static __inline__ sll sllceil(sll x);
 #define CONST_SQRT2	0x000000016a09e667LL	// sqrt(2)
 #define CONST_1_SQRT2	0x00000000b504f333LL	// 1 / sqrt(2)
 
-#define CONST_FACT_0    0x0000000100000000LL,   // 0!
-#define CONST_FACT_1    0x0000000100000000LL,   // 1!
-#define CONST_FACT_2    0x0000000200000000LL,   // 2!
-#define CONST_FACT_3    0x0000000600000000LL,   // 3!
-#define CONST_FACT_4    0x0000001800000000LL,   // 4!
-#define CONST_FACT_5    0x0000007800000000LL,   // 5!
-#define CONST_FACT_6    0x000002d000000000LL,   // 6!
-#define CONST_FACT_7    0x000013b000000000LL,   // 7!
-#define CONST_FACT_8    0x00009d8000000000LL,   // 8!
-#define CONST_FACT_9    0x0005898000000000LL,   // 9!
-#define CONST_FACT_10   0x00375f0000000000LL,   // 10!
-#define CONST_FACT_11   0x003ce88000000000LL,   // 11!
-#define CONST_FACT_12   0x02dae60000000000LL,   // 12!
-#define CONST_FACT_13   0x251dae0000000000LL,   // 13!
+#define CONST_FACT_0	0x0000000100000000LL	// 0!
+#define CONST_FACT_1	0x0000000100000000LL	// 1!
+#define CONST_FACT_2	0x0000000200000000LL	// 2!
+#define CONST_FACT_3	0x0000000600000000LL	// 3!
+#define CONST_FACT_4	0x0000001800000000LL	// 4!
+#define CONST_FACT_5	0x0000007800000000LL	// 5!
+#define CONST_FACT_6	0x000002d000000000LL	// 6!
+#define CONST_FACT_7	0x000013b000000000LL	// 7!
+#define CONST_FACT_8	0x00009d8000000000LL	// 8!
+#define CONST_FACT_9	0x0005898000000000LL	// 9!
+#define CONST_FACT_10	0x00375f0000000000LL	// 10!
+#define CONST_FACT_11	0x0261150000000000LL	// 11!
+#define CONST_FACT_12	0x1c8cfc0000000000LL	// 12!
 
 /*
  * Convert integer to sll
@@ -446,7 +449,7 @@ static __inline__ sll sllmul(sll x, sll y)
 	 *   the register number of the register containing the most
 	 *   significant part of the value.
 	 */
-	sll retval;
+	register sll retval;
 
 	__asm__ (
 		"@ sllmul\n\t"
@@ -542,9 +545,9 @@ static __inline__ sll sllmul4(sll x)
 
 static __inline__ sll sllmul2n(sll x, int n)
 {
-	sll y;
-
 #if defined(__arm__)
+
+	register sll y;
 
 	/*
 	 * On ARM we need to do explicit assembly since the compiler
@@ -560,13 +563,13 @@ static __inline__ sll sllmul2n(sll x, int n)
 		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
 
+	return y;
+
 #else
 
-	y = x << n;
+	return _sllmul2n(x, n);
 
 #endif
-
-	return y;
 }
 
 /*
@@ -602,9 +605,10 @@ static __inline__ sll slldiv4(sll x)
 
 static __inline__ sll slldiv2n(sll x, int n)
 {
-	sll y;
-
 #if defined(__arm__)
+
+	register sll y;
+
 	/*
 	 * On ARM we need to do explicit assembly since the compiler
 	 * doesn't know the range of n is limited and decides to call
@@ -618,13 +622,14 @@ static __inline__ sll slldiv2n(sll x, int n)
 		: "=r" (y)
 		: "r" (x), "rM" (n), "rM" (32 - n)
 	);
-#else
-
-	y = x >> n;
-
-#endif
 
 	return y;
+
+#else
+
+	return _slldiv2n(x, n);
+
+#endif
 }
 
 /*
