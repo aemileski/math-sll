@@ -1,11 +1,11 @@
 /*
- * Revision v1.21
+ * Revision v1.22
  *
  * Credits
  *
  *	Maintained, conceived, written, and fiddled with by:
  *
- *		 Andrew E. Mileski <andrewm@isoar.ca>
+ *		Andrew E. Mileski <andrewm@isoar.ca>
  *	
  *	Other source code contributors:
  *
@@ -47,7 +47,6 @@
  * Local prototypes
  */
 
-static sll _sllatan(sll x);
 static sll _sllcos(sll x);
 static sll _sllsin(sll x);
 
@@ -193,17 +192,17 @@ double sll2dbl(sll s)
  *
  * Description
  *
- *	Let a = A * 2^32 + a_hi * 2^0 + a_lo * 2^(-32)
- *	Let b = B * 2^32 + b_hi * 2^0 + b_lo * 2^(-32)
+ *	Let a = A * 2^32 + a_h * 2^0 + a_l * 2^(-32)
+ *	Let b = B * 2^32 + b_h * 2^0 + b_l * 2^(-32)
  *
  * 	Where:
  *
- *	*_hi is the integer part
- *	*_lo the fractional part
+ *	*_h is the integer part
+ *	*_l the fractional part
  *	A and B are the sign (0 for positive, -1 for negative).
  *
- *	a * b = (A * 2^32 + a_hi * 2^0 + a_lo * 2^-32)
- *	      * (B * 2^32 + b_hi * 2^0 + b_lo * 2^-32)
+ *	a * b = (A * 2^32 + a_h * 2^0 + a_l * 2^-32)
+ *	      * (B * 2^32 + b_h * 2^0 + b_l * 2^-32)
  *
  *	Expanding the terms, we get:
  *
@@ -235,9 +234,6 @@ double sll2dbl(sll s)
  *	a < 0 && b < 0: A = -1, B = -1 and the third term is a_h * b_h - a_l - b_l
  */
 #if !defined(HAVE_SLLMUL)
-/*
- * Plain C version: not optimal but portable
- */
 
 sll sllmul(sll a, sll b)
 {
@@ -259,6 +255,7 @@ sll sllmul(sll a, sll b)
 
 	return x;
 }
+
 #endif /* !defined(HAVE_SLLMUL)! */
 
 /*
@@ -448,85 +445,187 @@ sll slltan(sll x)
 }
 
 /*
- * Calculate atan x where |x| < 1
+ *
+ * Calculate asin x, where |x| <= 1
  *
  * Description
  *
- *	atan x = SUM[n=0,) (-1)^n * x^(2n + 1)/(2n + 1), |x| < 1
+ *	asin x = SUM[n=0,) C(2 * n, n) * x^(2 * n + 1) / (4^n * (2 * n + 1)), |x| <= 1
+ *
+ *	where C(n, r) = nCr = n! / (r! * (n - r)!)
  *
  *	Using a two term approximation:
- *	a = x - x^3/3
+ * [1]	a = x + x^3 / 6
  *
  *	Results in:
- *	atan x = a + ??
- *	where ?? is the difference from the exact result.
+ *	asin x = a + D
+ *	where D is the difference from the exact result
  *
- *	Letting ?? = arctan ? results in:
- *	atan x = a + arctan ?
+ *	Letting D = asin d results in:
+ * [2]	asin x = a + asin d
  *
  *	Re-arranging:
- *	atan x - a = arctan ?
+ *	asin x - a = asin d
+ *
+ *	Applying sin to both sides:
+ *	sin (asin x - a) = sin asin d
+ *	sin (asin x - a) = d
+ *	d = sin (asin x - a)
+ *
+ *	Applying the standard identity:
+ *	sin (u - v) = sin u * cos v - cos u * sin v
+ *
+ *	Results in:
+ *	d = sin asin x * cos a - cos asin x * sin a
+ *	d = x * cos a - cos asin x * sin a
+ *
+ *	Applying the standard identity:
+ *	cos asin u = (1 - u^2)^(1 / 2)
+ *
+ *	Results in:
+ * [3]	d = x * cos a - (1 - x^2)^(1 / 2) * sin a
+ *
+ *	Putting the pieces together:
+ * [1]	a = x + x^3 / 6
+ * [3]	d = x * cos a - (1 - x^2)^(1 / 2) * sin a
+ * [2]	asin x = a + asin d
+ *
+ *	The worst case is x = 1.0 which converges after 2 iterations.
+ */
+
+sll sllasin(sll x)
+{
+	int left_side;
+	sll a;
+	sll retval;
+
+	/* asin -x = -asin x */
+	if ((left_side = x < 0))
+		x = _sllneg(x);
+
+	/* Out-of-range */
+	if (x > CONST_1)
+		return 0;
+
+	/* Initial approximate */
+	a = sllmul(x, _slladd(CONST_1, sllmul(x, sllmul(x, CONST_1_6))));
+	retval = a;
+
+	/* First iteration */
+	x = _sllsub(sllmul(x, sllcos(a)), sllmul(sllsqrt(_sllsub(CONST_1, sllmul(x, x))), sllsin(a)));
+	a = sllmul(x, _slladd(CONST_1, sllmul(x, sllmul(x, CONST_1_6))));
+	retval = _slladd(retval, a);
+
+	/* Second iteration */
+	x = _sllsub(sllmul(x, sllcos(a)), sllmul(sllsqrt(_sllsub(CONST_1, sllmul(x, x))), sllsin(a)));
+	a = sllmul(x, _slladd(CONST_1, sllmul(x, sllmul(x, CONST_1_6))));
+	retval = _slladd(retval, a);
+
+	/* Negate result if necessary */
+	return (left_side ? _sllneg(retval): retval);
+}
+
+/*
+ * Calculate atan x
+ *
+ * Description
+ *
+ *	atan x = SUM[n=0,) (-1)^n * x^(2  * n + 1) / (2 * n + 1), |x| <= 1
+ *
+ *	Using a two term approximation:
+ * [1]	a = x - x^3 / 3
+ *
+ *	Results in:
+ * 	atan x = a + D
+ *	where D is the difference from the exact result
+ *
+ *	Letting D = atan d results in:
+ * [2]	atan x = a + atan d
+ *
+ *	Re-arranging:
+ *	atan x - a = atan d
  *
  *	Applying tan to both sides:
- *	tan (atan x - a) = tan arctan ?
- *	tan (atan x - a) = ?
+ *	tan (atan x - a) = tan atan d
+ *	tan (atan x - a) = d
+ * 	d = tan (atan x - a)
  *
  *	Applying the standard identity:
  *	tan (u - v) = (tan u - tan v) / (1 + tan u * tan v)
  *
  *	Results in:
- *	tan (atan x - a) = (tan atan x - tan a) / (1 + tan arctan x * tan a)
+ *	d = tan (atan x - a) = (tan atan x - tan a) / (1 + tan atan x * tan a)
+ * 	d = tan (atan x - a) = (x - tan a) / (1 + x * tan a)
  *
- *	Let t = tan a results in:
- *	tan (atan x - a) = (x - t) / (1 + x * t)
+ *	Let:
+ * [3]	t = tan a
  *
- *	So finally
- *	arctan x = a + arctan ((tan x - t) / (1 + x * t))
+ *	Results in:
+ * [4]	d = (x - t) / (1 + x * t)
  *
- *	And the typical worst case is x = 1.0 which converges in 3 iterations.
- */
-
-sll _sllatan(sll x)
-{
-	sll a;
-	sll t;
-	sll retval;
-
-	/* First iteration */
-	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
-	retval = a;
-
-	/* Second iteration */
-	t = slldiv(_sllsin(a), _sllcos(a));
-	x = slldiv(_sllsub(x, t), _slladd(CONST_1, sllmul(t, x)));
-	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
-	retval = _slladd(retval, a);
-
-	/* Third  iteration */
-	t = slldiv(_sllsin(a), _sllcos(a));
-	x = slldiv(_sllsub(x, t), _slladd(CONST_1, sllmul(t, x)));
-	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
-	return _slladd(retval, a);
-}
-
-/*
- * Calculate atan x for any value of x
+ *	So putting the pieces together:
+ * [1]	a = x - x^3 / 3
+ * [3]	t = tan a
+ * [4]	d = (x - t) / (1 + x * t)
+ * [2]	atan x = a + atan d
+ * 	atan x = a + atan ((x - t) / (1 + x * t))
+ *
+ *	The worst case is x = 1.0 which converges after 2 iterations.
  */
 
 sll sllatan(sll x)
 {
+	int side;
+	sll a;
+	sll t;
 	sll retval;
 
-	if (x < _sllneg(CONST_1))
-		/* if x < -1 then atan x = PI/2 + atan 1/x */
-		retval = _sllneg(CONST_PI_2);
-	else if (x > CONST_1)
-		/* if x > 1 then atan x = PI/2 - atan 1/x */
-		retval = CONST_PI_2;
-	else
-		return _sllatan(x);
 
-	return _sllsub(retval, _sllatan(sllinv(x)));
+	if (x < CONST_1) {
+
+		/* Left:  if (x < -1) then atan x = pi / 2 + atan 1 / x */
+		side = -1;
+		x = sllinv(x);
+
+	} else if (x > CONST_1) {
+
+		/* Right:  if (x > 1) then atan x = pi / 2 - atan 1 / x */
+		side = 1;
+		x = sllinv(x);
+
+	} else {
+		/* Middle:  -1 <= x <= 1 */
+		side = 0;
+	}
+
+	/* Initial approximate */
+	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
+	retval = a;
+
+	/* First iteration */
+	t = _slldiv(_sllsin(a), _sllcos(a));
+	x = _slldiv(_sllsub(x, t), _slladd(CONST_1, sllmul(x, t)));
+	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
+	retval = _slladd(retval, a);
+
+	/* Second iteration */
+	t = _slldiv(_sllsin(a), _sllcos(a));
+	x = _slldiv(_sllsub(x, t), _slladd(CONST_1, sllmul(x, t)));
+	a = sllmul(x, _sllsub(CONST_1, sllmul(x, sllmul(x, CONST_1_3))));
+	retval =  _slladd(retval, a);
+
+	if (side == -1) {
+
+		/* Left:  if (x < -1) then atan x = pi / 2 + atan 1 / x */
+		retval = _slladd(CONST_PI_2, retval);
+
+	} else if (side == 1) {
+
+		/* Right:  if (x > 1) then atan x = pi / 2 - atan 1 / x */
+		retval = _sllsub(CONST_PI_2, retval);
+	}
+
+	return retval;
 }
 
 /*
@@ -775,4 +874,3 @@ sll sllsqrt(sll x)
 	/* Scale the result */
 	return sllmul(n, xn);
 }
-

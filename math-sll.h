@@ -1,9 +1,9 @@
 #if !defined(MATH_SLL_H)
 #  define MATH_SLL_H
 /*
- * Revision v1.21
+ * Revision v1.22
  *
- *	A fixed point (31.32 bit) math library.
+ *	A fixed point (32.32 bit) math library.
  *
  * Description
  *
@@ -67,14 +67,17 @@
  *	sll slldiv2n(sll x, int n)		x / 2^n, 0 <= n <= 31
  *	sll slldiv4(sll x)			x / 4
  *
- *	sll sllatan(sll x)			atan x
  *	sll sllcos(sll x)			cos x
  *	sll sllsin(sll x)			sin x
  *	sll slltan(sll x)			tan x
  *
- *	sll sllsec(sll x)			sec x
- *	sll sllcsc(sll x)			csc x
- *	sll sllcot(sll x)			cot x
+ *	sll sllsec(sll x)			sec x = 1 / cos x
+ *	sll sllcsc(sll x)			csc x = 1 / sin x
+ *	sll sllcot(sll x)			cot x = 1 / tan x = cos x / sin x
+ *
+ *	sll sllacos(sll x)			acos x
+ *	sll sllasin(sll x)			asin x
+ *	sll sllatan(sll x)			atan x
  *
  *	sll sllcosh(sll x)			cosh x
  *	sll sllsinh(sll x)			sinh x
@@ -124,7 +127,7 @@
  *
  *	Maintained, conceived, written, and fiddled with by:
  *
- *		 Andrew E. Mileski <andrewm@isoar.ca>
+ *		Andrew E. Mileski <andrewm@isoar.ca>
  *
  *	Other source code contributors:
  *
@@ -211,10 +214,13 @@ static __inline__ sll slldiv2(sll x);
 static __inline__ sll slldiv4(sll x);
 static __inline__ sll slldiv2n(sll x, int n);
 
-sll sllatan(sll x);
 sll sllcos(sll x);
 sll sllsin(sll x);
 sll slltan(sll x);
+
+static __inline__ sll sllacos(sll x);
+sll sllasin(sll x);
+sll sllatan(sll x);
 
 static __inline__ sll sllsec(sll x);
 static __inline__ sll sllcsc(sll x);
@@ -395,17 +401,17 @@ static __inline__ sll sllsub(sll x, sll y)
  *
  * Description
  *
- *	Let a = A * 2^32 + a_hi * 2^0 + a_lo * 2^(-32)
- *	Let b = B * 2^32 + b_hi * 2^0 + b_lo * 2^(-32)
+ *	Let a = A * 2^32 + a_h * 2^0 + a_l * 2^(-32)
+ *	Let b = B * 2^32 + b_h * 2^0 + b_l * 2^(-32)
  *
  * 	Where:
  *
- *	*_hi is the integer part
- *	*_lo the fractional part
+ *	*_h is the integer part
+ *	*_l the fractional part
  *	A and B are the sign (0 for positive, -1 for negative).
  *
- *	a * b = (A * 2^32 + a_hi * 2^0 + a_lo * 2^-32)
- *		* (B * 2^32 + b_hi * 2^0 + b_lo * 2^-32)
+ *	a * b = (A * 2^32 + a_h * 2^0 + a_l * 2^-32)
+ *		* (B * 2^32 + b_h * 2^0 + b_l * 2^-32)
  *
  *	Expanding the terms, we get:
  *
@@ -633,6 +639,23 @@ static __inline__ sll slldiv2n(sll x, int n)
 }
 
 /*
+ *
+ * Calculate acos x, where |x| <= 1
+ *
+ * Description
+ *
+ *	acos x = pi / 2 - asin x
+ *	acos x = pi / 2 - SUM[n=0,) C(2 * n, n) * x^(2 * n + 1) / (4^n * (2 * n + 1)), |x| <= 1
+ *
+ *	where C(n, r) = nCr = n! / (r! * (n - r)!)
+ */
+
+static __inline__ sll sllacos(sll x)
+{
+	return _sllsub(CONST_PI_2, sllasin(x));
+}
+
+/*
  * Trigonometric secant
  *
  * Description
@@ -832,4 +855,5 @@ static __inline__ sll sllceil(sll x)
 
 	return ((retval < x) ? _slladd(retval, CONST_1): retval);
 }
+
 #endif /* !defined(MATH_SLL_H) */

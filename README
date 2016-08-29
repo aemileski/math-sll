@@ -1,7 +1,7 @@
 
 math-sll
 
-	A fixed point (31.32 bit) math library.
+	A fixed point (32.32 bit) math library.
 
 	See math-sll.h for details.
 
