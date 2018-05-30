@@ -1,5 +1,5 @@
 /*
- * Revision v1.22
+ * Revision v1.23
  *
  * Credits
  *
@@ -192,68 +192,73 @@ double sll2dbl(sll s)
  *
  * Description
  *
- *	Let a = A * 2^32 + a_h * 2^0 + a_l * 2^(-32)
- *	Let b = B * 2^32 + b_h * 2^0 + b_l * 2^(-32)
+ *	When multiplying two 64 bit sll numbers, the result is 128 bits, but there
+ *	is only room for a 64 bit result with sll!
+ *
+ *	The 128 bit result has 64 bits on either side of the decimal, so 32 bits
+ *	of overflow to the left of the decimal, and 32 bits of underflow to the
+ *	right of the decmial.
+ *
+ *	32.32 * 32.32 = 64.64 = overflow(32) + 32.32 + underflow(32)
+ *
+ *	However, a "long long" multiply has 64 bits of overflow to the left of the
+ *	decimal, resulting in the entire integer part being lost!
+ *
+ *	32.32 * 32.32 = 64.64 = overflow(64) + .64
+ *
+ *	Hence a custom multiply routine is required, to preserve the parts
+ *	of the result that sll needs.
+ *
+ *	Consider two sll numbers, x and y:
+ *
+ *	Let x = x_hi * 2^0 + x_lo * 2^(-32)
+ *	Let y = y_hi * 2^0 + y_lo * 2^(-32)
  *
  * 	Where:
  *
- *	*_h is the integer part
- *	*_l the fractional part
- *	A and B are the sign (0 for positive, -1 for negative).
+ *	*_hi is the signed 32 bit integer part to the left of the decimal
+ *	*_lo is the unsigned 32 bit fractional part to the right of the decimal
  *
- *	a * b = (A * 2^32 + a_h * 2^0 + a_l * 2^-32)
- *	      * (B * 2^32 + b_h * 2^0 + b_l * 2^-32)
+ *	x * y = (x_hi * 2^0 + x_lo * 2^(-32))
+ *	      * (y_hi * 2^0 + y_lo * 2^(-32))
  *
  *	Expanding the terms, we get:
  *
- *	= A * B * 2^64 + A * b_h * 2^32 + A * b_l * 2^0
- *	+ a_h * B * 2^32 + a_h * b_h * 2^0 + a_h * b_l * 2^-32
- *	+ a_l * B * 2^0 + a_l * b_h * 2^-32 + a_l * b_l * 2^-64
+ *	= x_hi * y_hi * 2^0 + x_hi * y_lo * 2^(-32)
+ *	+ x_lo * y_hi * 2^(-32) + x_lo * y_lo * 2^(-64)
  *
  *	Grouping by powers of 2, we get:
  *
- *	= A * B * 2^64
- *	Meaningless overflow from sign extension - ignore
- *
- *	+ (A * b_h + a_h * B) * 2^32
- *	Overflow which we can't handle - ignore
- *
- *	+ (A * b_l + a_h * b_h + a_l * B) * 2^0
+ *	(x_hi * y_hi) * 2^0
  *	We only need the low 32 bits of this term, as the rest is overflow
  *
- *	+ (a_h * b_l + a_l * b_h) * 2^-32
- *	We need all 64 bits of this term
+ *	(x_hi * y_lo + x_lo * y_hi) * 2^-32
+ *	We need all bits of this term
  *
- *	+  a_l * b_l * 2^-64
+ *	x_lo * y_lo * 2^-64
  *	We only need the high 32 bits of this term, as the rest is underflow
- *
- *	Note that:
- *	a > 0 && b > 0: A =  0, B =  0 and the third term is a_h * b_h
- *	a < 0 && b > 0: A = -1, B =  0 and the third term is a_h * b_h - b_l
- *	a > 0 && b < 0: A =  0, B = -1 and the third term is a_h * b_h - a_l
- *	a < 0 && b < 0: A = -1, B = -1 and the third term is a_h * b_h - a_l - b_l
  */
 #if !defined(HAVE_SLLMUL)
 
-sll sllmul(sll a, sll b)
+sll sllmul(sll x, sll y)
 {
-	unsigned int a_lo;
-	unsigned int b_lo;
-	signed int a_hi;
-	signed int b_hi;
-	sll x;
+	register unsigned int x_lo;
+	register signed int x_hi;
 
-	a_lo = a;
-	a_hi = (ull) a >> 32;
-	b_lo = b;
-	b_hi = (ull) b >> 32;
+	register unsigned int y_lo;
+	register signed int y_hi;
 
-	x = ((ull) (a_hi * b_hi) << 32)
-	  + (((ull) a_lo * b_lo) >> 32)
-	  + (sll) a_lo * b_hi
-	  + (sll) b_lo * a_hi;
+	x_hi = (signed int) ((ull) x >> 32);	// Discard lower 32 bits
+	x_lo = (unsigned int) x;		// Discard upper 32 bits
 
-	return x;
+	y_hi = (signed int) ((ull) y >> 32);	// Discard lower 32 bits
+	y_lo = (unsigned int) y;		// Discard upper 32 bits
+
+	return (sll) (
+		  ((ull) (x_hi * y_hi) << 32)
+		+ ((ull) x_hi * y_lo + x_lo * (ull) y_hi)
+		+ (((ull) x_lo * y_lo) >> 32)
+	);
 }
 
 #endif /* !defined(HAVE_SLLMUL)! */
