@@ -1,7 +1,7 @@
 #if !defined(MATH_SLL_H)
 #  define MATH_SLL_H
 /*
- * Revision v1.22
+ * Revision v1.24
  *
  *	A fixed point (32.32 bit) math library.
  *
